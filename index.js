@@ -1,6 +1,11 @@
+// Modules
 const Discord = require('discord.js');
 
+// Local Files
 const config = require('./config/config.json');
+const clipper = require('./tools/clipper.js');
+
+// Variables
 
 const client = new Discord.Client({
 	partials: ['GUILD_MEMBER', 'MESSAGE', 'REACTION'],
@@ -18,7 +23,7 @@ client.on('message', (message) => {
 	// Temporarily keeping all commands here
 	switch (cmd[0]) {
 	case 'clip': {
-		message.channel.send('pong');
+		clipper.clipVideo('https://www.youtube.com/watch?v=88UYLWDjomE', 'A', '[0:00-0:10]', 'mkv');
 		break;
 	}
 	default: {
