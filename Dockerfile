@@ -82,8 +82,8 @@ RUN apk add --no-cache \
 
 # Additional dependencies          
 RUN apk add --no-cache \
+    youtube-dl \
     ffmpeg
-    youtube-dl
 
 # Discord bot
 # Create a folder for the bot

@@ -11,8 +11,7 @@ param (
     [string]$needsstitching = "y",
     [string]$fileOutExt = "mkv"
 )
-$tempdir = [System.IO.Path]::GetTempPath()
-$tempdir = $tempdir.trim("/")
+$tempdir = "./temp"
 #Add-Type -AssemblyName PresentationCore,PresentationFramework
 function parser($clipstamps) {
     $clipTimestamps=$clipstamps.trim("[]")
@@ -316,5 +315,4 @@ $clipper = {
     else {return}
 }
 #Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope Process
-write-host $inlink
 &$clipper

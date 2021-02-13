@@ -21,9 +21,22 @@ client.on('message', (message) => {
 	const cmd = message.content.slice(config.discord.prefix.length).split(' ');
 	const args = cmd.slice(1);
 	// Temporarily keeping all commands here
+	// Gonna level with you, most of this is held together with duct tape and prayers atm
 	switch (cmd[0]) {
 	case 'clip': {
-		clipper.clipVideo('https://www.youtube.com/watch?v=88UYLWDjomE', 'A', '[0:00-0:10]', 'mkv');
+		if (args[0] === 'help') {
+			message.channel.send('Usage:\nTODO: add usage guide');
+			break;
+		}
+		if (args[3] === 'mkv' || args[3] === 'mp4') {
+			clipper.clipVideo(args[0], 'A', args[1], args[2], args[3], message);
+		} else {
+			message.channel.send('Missing Arguments');
+		}
+		break;
+	}
+	case 'help': {
+		message.channel.send('Currently Functional Commands:\n```clip - Type "i!clip help" for usage```');
 		break;
 	}
 	default: {
