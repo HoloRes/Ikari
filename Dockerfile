@@ -1,4 +1,4 @@
-FROM node:lts-alpine
+FROM node:lts-alpine AS installer-env
 
 # Powershell based on Microsoft
 # Define Args for the needed to add the package
