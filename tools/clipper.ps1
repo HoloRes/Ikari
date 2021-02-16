@@ -1,73 +1,81 @@
-#May his soul help anyone trying to sift their way through this garbage heap of a script.
+# Hololive covers are the only thing keeping me sane
+
+# Define parameters
 param (
-    [string]$fulltitle = "output",
-    [string]$videotype = $null,
-    [string]$hlrwStandards = "n",
-    [string]$inlink = $null,
-    [string]$miniclip = "y",
-    [string]$tempfile = $null,
-    [string]$dlDir = ".",
-    [string]$timestampsIn = $null,
-    [string]$needsstitching = "y",
-    [string]$fileOutExt = "mkv"
+    [string]$fulltitle = "output",   # Defines the output filename, without extension
+    [string]$videotype = $null,      # Defines the type of video being clipped
+    [string]$hlrwStandards = "y",    # Obsolete param, TODO: delete
+    [string]$inlink = $null,         # Defines input link
+    [string]$miniclip = "y",         # Obsolete param, TODO: delete
+    [string]$tempfile = $null,       # Obsolete param, TODO: delete
+    [string]$dlDir = ".",            # Defines the download directory for the final file
+    [string]$timestampsIn = $null,   # Defines the timestamps to be clipped
+    [string]$needsstitching = "y",   # Obsolete param, TODO: delete
+    [string]$fileOutExt = "mkv"      # Defines the output file extension
 )
+# Define directory for temporary files
 $tempdir = "./temp"
-#Add-Type -AssemblyName PresentationCore,PresentationFramework
+
+# Define "parser" function, which parses the input timestamps into a format
+# the script can work with
+#
+# I'm scared to touch this function, mainly because I forgot how exactly
+# it works.
 function parser($clipstamps) {
     $clipTimestamps=$clipstamps.trim("[]")
-        $clip1st1,$clip1st2=$clipTimestamps.split("-")
-        $c1st1array=$clip1st1.split(":")
-        $c1st2array=$clip1st2.split(":")
-        $c1a1,$c1a2,$c1a3=$clip1st1.split(":")
-        $c1b1,$c1b2,$c1b3=$clip1st2.split(":")
-        $c1a1 = [int]$c1a1
-        $c1a2 = [int]$c1a2
-        $c1a3 = [int]$c1a3
-        $c1b1 = [int]$c1b1
-        $c1b2 = [int]$c1b2
-        $c1b3 = [int]$c1b3
-        if ($c1st1array.length -eq 2) {
-            if (($c1a1.tostring().length) -eq 1) {
-                $c1a1 = "0$c1a1"
-            }
-            if (($c1a2.tostring().length) -eq 1) {
-                $c1a2 = "0$c1a2"
-            }
-            $tsin = "00`:$c1a1`:$c1a2`:00"
+    $clip1st1,$clip1st2=$clipTimestamps.split("-")
+    $c1st1array=$clip1st1.split(":")
+    $c1st2array=$clip1st2.split(":")
+    $c1a1,$c1a2,$c1a3=$clip1st1.split(":")
+    $c1b1,$c1b2,$c1b3=$clip1st2.split(":")
+    $c1a1 = [int]$c1a1
+    $c1a2 = [int]$c1a2
+    $c1a3 = [int]$c1a3
+    $c1b1 = [int]$c1b1
+    $c1b2 = [int]$c1b2
+    $c1b3 = [int]$c1b3
+    if ($c1st1array.length -eq 2) {
+        if (($c1a1.tostring().length) -eq 1) {
+            $c1a1 = "0$c1a1"
         }
-        if ($c1st1array.length -eq 3) {
-            if (($c1a1.tostring().length) -eq 1) {
-                $c1a1 = "0$c1a1"
-            }
-            if (($c1a2.tostring().length) -eq 1) {
-                $c1a2 = "0$c1a2"
-            }
-            if (($c1a3.tostring().length) -eq 1) {
-                $c1a3 = "0$c1a3"
-            }
-            $tsin = "$c1a1`:$c1a2`:$c1a3`:00"
+        if (($c1a2.tostring().length) -eq 1) {
+            $c1a2 = "0$c1a2"
         }
-        if ($c1st2array.length -eq 2) {
-            if (($c1b1.tostring().length) -eq 1) {
-                $c1b1 = "0$c1b1"
-            }
-            if (($c1b2.tostring().length) -eq 1) {
-                $c1b2 = "0$c1b2"
-            }
-            $tein = "00`:$c1b1`:$c1b2`:00"
+        $tsin = "00`:$c1a1`:$c1a2`:00"
+    }
+    if ($c1st1array.length -eq 3) {
+        if (($c1a1.tostring().length) -eq 1) {
+             $c1a1 = "0$c1a1"
         }
-        if ($c1st2array.length -eq 3) {
-            if (($c1b1.tostring().length) -eq 1) {
-                $c1b1 = "0$c1b1"
-            }
-            if (($c1b2.tostring().length) -eq 1) {
-                $c1b2 = "0$c1b2"
-            }
-            if (($c1b3.tostring().length) -eq 1) {
-                $c1b3 = "0$c1b3"
-            }
-            $tein = "$c1b1`:$c1b2`:$c1b3`:00"
+        if (($c1a2.tostring().length) -eq 1) {
+            $c1a2 = "0$c1a2"
         }
+        if (($c1a3.tostring().length) -eq 1) {
+            $c1a3 = "0$c1a3"
+        }
+        $tsin = "$c1a1`:$c1a2`:$c1a3`:00"
+    }
+    if ($c1st2array.length -eq 2) {
+        if (($c1b1.tostring().length) -eq 1) {
+            $c1b1 = "0$c1b1"
+        }
+        if (($c1b2.tostring().length) -eq 1) {
+            $c1b2 = "0$c1b2"
+        }
+        $tein = "00`:$c1b1`:$c1b2`:00"
+    }
+    if ($c1st2array.length -eq 3) {
+        if (($c1b1.tostring().length) -eq 1) {
+      	    $c1b1 = "0$c1b1"
+        }
+        if (($c1b2.tostring().length) -eq 1) {
+            $c1b2 = "0$c1b2"
+        }
+        if (($c1b3.tostring().length) -eq 1) {
+            $c1b3 = "0$c1b3"
+        }
+        $tein = "$c1b1`:$c1b2`:$c1b3`:00"
+		}
     $clipts = $tsin.split(":")
     $clipts1 = [int]$clipts[0] #1ts1
     $clipts2 = [int]$clipts[1] #1ts2
@@ -155,7 +163,7 @@ $clipper = {
     $mapperNum = 0
     $ytdlAttempts = 0
     $clipStamps=$timestampsIn.split(",")
-    if ($videotype -eq "A" -or $videotype -eq "a") {
+    if ($videotype.toLower() -eq "youtube") {
         while (!$glinks -and $ytdlAttempts -lt 5) {
             $glinks = youtube-dl -g "$inlink"
             $glinksBACKUP = youtube-dl -g --youtube-skip-dash-manifest "$inlink"
@@ -170,7 +178,7 @@ $clipper = {
         if (!$glink2) {$glink2 = $glink1}
         if (!$glinkBACK2) {$glinkBACK2 = $glinkBACK1}
     }
-    if ($videotype -eq "B" -or $videotype -eq "b") {
+    if ($videotype.toLower() -eq "other") {
         $glink = youtube-dl -g "$inlink"
         while (!$glink-and $ytdlAttempts -lt 5) {
             $glink = youtube-dl -g "$inlink"
@@ -185,7 +193,7 @@ $clipper = {
         $parserOut = parser $clipStamps[$clipnum]
         $clipsSps += $parserOut[0]
         $clipsRt += $parserOut[1]
-        if ($videotype -eq "A" -or $videotype -eq "a") {
+        if ($videotype.toLower() -eq "youtube") {
             if ($miniclipnum -eq 1) {
                 ffmpeg -y -ss $clipsSps[$clipnum] -i ($glink1) -t $clipsRt[$clipnum] -ss $clipsSps[$clipnum] -i ($glink2) -t $clipsRt[$clipnum] "$dlDir/$fulltitle.$fileOutExt"
                 if ((Test-Path("$dlDir/$fulltitle.$fileOutExt")) -eq $true) {
@@ -206,12 +214,12 @@ $clipper = {
                 if ((Test-Path("$tempdir/clip$clipnumout.mkv")) -eq $true) {
                     $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/clip$clipnumout.mkv`" "
                     $stitchCmdMapInputs = $stitchCmdMapInputs + "[$mapperNum`:v:0][$mapperNum`:a:0]"
-                    $stitchCmdMapInputsCount = $stitchCmdMapInputsCount + 1
+                    $stitchCmdMapInputsCount ++
                     if (($hlrwStandards -eq "Y" -or $hlrwStandards -eq "y") -and ($parsernum -gt 1)) {
-                        $mapperNum = $mapperNum + 1
+                        $mapperNum ++
                         $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/blackscreen.mkv`" "
                         $stitchCmdMapInputs = $stitchCmdMapInputs + "[$mapperNum`:v:0][$mapperNum`:a:0]"
-                        $stitchCmdMapInputsCount = $stitchCmdMapInputsCount + 1
+                        $stitchCmdMapInputsCount ++
                     }
                 }
                 else {
@@ -219,12 +227,12 @@ $clipper = {
                     if ((Test-Path("$tempdir/clip$clipnumout.mkv")) -eq $true) {
                         $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/clip$clipnumout.mkv`" "
                         $stitchCmdMapInputs = $stitchCmdMapInputs + "[$mapperNum`:v:0][$mapperNum`:a:0]"
-                        $stitchCmdMapInputsCount = $stitchCmdMapInputsCount + 1
+                        $stitchCmdMapInputsCount ++
                         if (($hlrwStandards -eq "Y" -or $hlrwStandards -eq "y") -and ($parsernum -gt 1)) {
-                            $mapperNum = $mapperNum + 1
+                            $mapperNum ++
                             $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/blackscreen.mkv`" "
                             $stitchCmdMapInputs = $stitchCmdMapInputs + "[$mapperNum`:v:0][$mapperNum`:a:0]"
-                            $stitchCmdMapInputsCount = $stitchCmdMapInputsCount + 1
+                            $stitchCmdMapInputsCount ++
                         }
                     }
                     else {
@@ -233,7 +241,7 @@ $clipper = {
                 }
             }
         }
-        if ($videotype -eq "B" -or $videotype -eq "b") {
+        if ($videotype.toLower() -eq "other") {
             if ($miniclipnum -eq 1) {
                 ffmpeg -y -ss $clipsSps[$clipnum] -i ($glink) -t $clipsRt[$clipnum] "$dlDir/$fulltitle.$fileOutExt"
                 if ((Test-Path("$dlDir/$fulltitle.$fileOutExt")) -eq $true) {
@@ -247,35 +255,12 @@ $clipper = {
                 ffmpeg -y -ss $clipsSps[$clipnum] -i ($glink) -t $clipsRt[$clipnum] "$tempdir/clip$clipnumout.mkv"
                 $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/clip$clipnumout.mkv`" "
                 $stitchCmdMapInputs = $stitchCmdMapInputs + "[$mapperNum`:v:0][$mapperNum`:a:0]"
-                $stitchCmdMapInputsCount = $stitchCmdMapInputsCount + 1
+                $stitchCmdMapInputsCount ++
                 if (($hlrwStandards -eq "Y" -or $hlrwStandards -eq "y") -and ($parsernum -gt 1)) {
-                    $mapperNum = $mapperNum + 1
+                    $mapperNum ++
                     $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/blackscreen.mkv`" "
                     $stitchCmdMapInputs = $stitchCmdMapInputs + "[$mapperNum`:v:0][$mapperNum`:a:0]"
-                    $stitchCmdMapInputsCount = $stitchCmdMapInputsCount + 1
-                }
-            }
-        }
-        if ($videotype -eq "C" -or $videotype -eq "c") {
-            if ($miniclipnum -eq 1) {
-                ffmpeg -y -ss $clipsSps[$clipnum] -i ($tempfile) -t $clipsRt[$clipnum] "$dlDir/$fulltitle.$fileOutExt"
-                if ((Test-Path("$dlDir/$fulltitle.$fileOutExt")) -eq $true) {
-                    Write-Host "Clipping Complete"
-                }
-                else {
-                    Write-Host "Clipping Unsuccessful"
-                }
-            }
-            if ($miniclipnum -ge 2) {
-                ffmpeg -y -ss $clipsSps[$clipnum] -i ($tempfile) -t $clipsRt[$clipnum] "$tempdir/clip$clipnumout.mkv"
-                $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/clip$clipnumout.mkv`" "
-                $stitchCmdMapInputs = $stitchCmdMapInputs + "[$mapperNum`:v:0][$mapperNum`:a:0]"
-                $stitchCmdMapInputsCount = $stitchCmdMapInputsCount + 1
-                if (($hlrwStandards -eq "Y" -or $hlrwStandards -eq "y") -and ($parsernum -gt 1)) {
-                    $mapperNum = $mapperNum + 1
-                    $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/blackscreen.mkv`" "
-                    $stitchCmdMapInputs = $stitchCmdMapInputs + "[$mapperNum`:v:0][$mapperNum`:a:0]"
-                    $stitchCmdMapInputsCount = $stitchCmdMapInputsCount + 1
+                    $stitchCmdMapInputsCount ++
                 }
             }
         }
@@ -290,7 +275,8 @@ $clipper = {
         if ($miniclipnum -ge 2) {
             if ($hlrwStandards -eq "Y" -or $hlrwStandards -eq "y") {
                 $clipresolution = ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 "$tempdir/clip1.mkv"
-                ffmpeg -y -f lavfi -i color=black:s="$clipresolution":r=30000/1000 -f lavfi -i anullsrc -ar 48000 -ac 2 -t 3 "$tempdir/blackscreen.mkv"
+                $cliprate = ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of csv=s=x:p=0 "$tempdir/clip1.mkv"
+                ffmpeg -y -f lavfi -i color=black:s="$clipresolution":r=30000/1000 -f lavfi -i anullsrc -ar $cliprate -ac 2 -t 3 "$tempdir/blackscreen.mkv"
             }
             Invoke-Expression $stitchCmd
             if ((Test-Path("$dlDir/$fulltitle.$fileOutExt")) -eq $true) {

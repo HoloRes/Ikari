@@ -2,7 +2,7 @@
 const { exec } = require('child_process');
 const fs = require('fs');
 
-function clipVideo(videoLink, videoType, timestamps, fileName, fileExt, message) {
+function clipVideo(videoType, videoLink, timestamps, fileName, fileExt, message) {
 	console.log('REGISTERED');
 	exec(`pwsh ./tools/clipper.ps1 -videotype ${videoType} -inlink ${videoLink} -timestampsIn ${timestamps} -dlDir "." -fulltitle ${fileName} -fileOutExt ${fileExt}`, (error, stdout) => {
 		console.log(stdout);
