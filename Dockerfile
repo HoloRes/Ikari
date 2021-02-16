@@ -75,8 +75,11 @@ RUN addgroup -g 1000 node \
 
 # Additional dependencies          
 RUN apk add --no-cache \
-    youtube-dl \
+    python3 \
     ffmpeg
+
+RUN sudo wget https://yt-dl.org/downloads/latest/youtube-dl -O /usr/local/bin/youtube-dl \
+    && chmod a+rx /usr/local/bin/youtube-dl
 
 # Discord bot
 # Create a folder for the bot
