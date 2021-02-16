@@ -80,7 +80,7 @@ RUN apk add --no-cache \
 
 RUN wget https://yt-dl.org/downloads/latest/youtube-dl -O /usr/local/bin/youtube-dl \
     && chmod a+rx /usr/local/bin/youtube-dl \
-    && alias python=python3
+    && ln -s $(which python3) /usr/bin/python
 
 # Discord bot
 # Create a folder for the bot
