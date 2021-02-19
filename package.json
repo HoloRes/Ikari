@@ -1,7 +1,7 @@
 {
-  "name": "ikari",
+  "name": "ikari-offloading",
   "version": "1.0.0",
-  "description": "Ikari",
+  "description": "Ikari ffmpeg offloading script",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -10,17 +10,17 @@
     "type": "git",
     "url": "git+https://github.com/HoloRes/Ikari.git"
   },
-  "author": "Sheer-Curiosity",
+  "author": "GoldElysium",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/HoloRes/Ikari/issues"
   },
   "homepage": "https://github.com/HoloRes/Ikari#readme",
   "dependencies": {
-    "discord.js": "^12.5.1"
+    "socket.io-client": "^3.1.1"
   },
   "devDependencies": {
-    "eslint": "^7.19.0",
+    "eslint": "^7.20.0",
     "eslint-config-airbnb-base": "^14.2.1",
     "eslint-plugin-import": "^2.22.1"
   }
