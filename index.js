@@ -32,7 +32,7 @@ client.on('message', (message) => {
 		if (args[4] === 'mkv' || args[4] === 'mp4') {
 			clipper.clipVideo(args[0], args[1], args[2], args[3], args[4], message);
 		} else {
-			message.channel.send('Missing Arguments');
+			message.channel.send('Missing or Incorrect Arguments');
 		}
 		break;
 	}

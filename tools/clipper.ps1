@@ -4,13 +4,9 @@
 param (
     [string]$fulltitle = "output",   # Defines the output filename, without extension
     [string]$videotype = $null,      # Defines the type of video being clipped
-    [string]$hlrwStandards = "y",    # Obsolete param, TODO: delete
     [string]$inlink = $null,         # Defines input link
-    [string]$miniclip = "y",         # Obsolete param, TODO: delete
-    [string]$tempfile = $null,       # Obsolete param, TODO: delete
     [string]$dlDir = ".",            # Defines the download directory for the final file
     [string]$timestampsIn = $null,   # Defines the timestamps to be clipped
-    [string]$needsstitching = "y",   # Obsolete param, TODO: delete
     [string]$fileOutExt = "mkv"      # Defines the output file extension
 )
 # Define directory for temporary files
@@ -81,19 +77,17 @@ function parser($clipstamps) {
     $clipts2 = [int]$clipts[1] #1ts2
     $clipts3 = [int]$clipts[2] #1ts3
     $clipts4 = [int]$clipts[3] #1ts4
-    if ($hlrwStandards -eq "Y" -or $hlrwStandards -eq "y") {
-        if ($clipts3 -lt 5 -and $clipts2 -eq 0 -and $clipts1 -eq 0) {
-            $clipts3 = 0
-        }
-        else {
-            $clipts3 = $clipts3 - 5
-            if ($clipts3 -lt 0) {
-                    $clipts3 = $clipts3 + 60
-                    $clipts2 = $clipts2 - 1
-                    if ($clipts2 -lt 0) {
-                        $clipts2 = $clipts2 + 60
-                        $clipts1 = $clipts1 - 1
-                    }
+    if ($clipts3 -lt 5 -and $clipts2 -eq 0 -and $clipts1 -eq 0) {
+        $clipts3 = 0
+    }
+    else {
+        $clipts3 = $clipts3 - 5
+        if ($clipts3 -lt 0) {
+            $clipts3 = $clipts3 + 60
+            $clipts2 = $clipts2 - 1
+            if ($clipts2 -lt 0) {
+                $clipts2 = $clipts2 + 60
+                $clipts1 = $clipts1 - 1
             }
         }
     }
@@ -102,15 +96,13 @@ function parser($clipstamps) {
     $clipte2 = [int]$clipte[1] #1te2
     $clipte3 = [int]$clipte[2] #1te3
     $clipte4 = [int]$clipte[3] #1te4
-    if ($hlrwStandards -eq "Y" -or $hlrwStandards -eq "y") {
-        $clipte3 = $clipte3 + 5
-        if ($clipte3 -ge 60) {
-            $clipte3 = $clipte3 - 60
-            $clipte2 = $clipte2 + 1
-            if ($clipte2 -ge 60) {
-                $clipte2 = $clipte2 - 60
-                $clipte1 = $clipte1 + 1
-            }
+    $clipte3 = $clipte3 + 5
+    if ($clipte3 -ge 60) {
+        $clipte3 = $clipte3 - 60
+        $clipte2 = $clipte2 + 1
+        if ($clipte2 -ge 60) {
+            $clipte2 = $clipte2 - 60
+            $clipte1 = $clipte1 + 1
         }
     }
     $cliptc1 = $clipte1 - $clipts1
@@ -170,7 +162,7 @@ $clipper = {
             $ytdlAttempts = $ytdlAttempts + 1
         }
         if ($ytdlAttempts -eq 5) {
-            Write-Host "Error Fetching Direct File Links. Verify Inputted Media Link"
+            Write-output "Error Fetching Direct File Links. Verify Inputted Media Link"
             Throw "ERROR: YTDL failed to fetch media links"
         }
         $glink1,$glink2 = $glinks.split(" ")
@@ -185,7 +177,7 @@ $clipper = {
             $ytdlAttempts = $ytdlAttempts + 1
         }
         if ($ytdlAttempts -eq 5) {
-            Write-Host "Error Fetching Direct File Links. Verify Inputted Media Link"
+            Write-output "Error Fetching Direct File Links. Verify Inputted Media Link"
             Throw "ERROR: YTDL failed to fetch media links"
         }
     }
@@ -197,15 +189,15 @@ $clipper = {
             if ($miniclipnum -eq 1) {
                 ffmpeg -y -ss $clipsSps[$clipnum] -i ($glink1) -t $clipsRt[$clipnum] -ss $clipsSps[$clipnum] -i ($glink2) -t $clipsRt[$clipnum] "$dlDir/$fulltitle.$fileOutExt"
                 if ((Test-Path("$dlDir/$fulltitle.$fileOutExt")) -eq $true) {
-                    Write-Host "Clipping Complete"
+                    Write-output "Clipping Complete"
                 }
                 else {
                     ffmpeg -y -ss $clipsSps[$clipnum] -i ($glinkBACK1) -t $clipsRt[$clipnum] -ss $clipsSps[$clipnum] -i ($glinkBACK2) -t $clipsRt[$clipnum] "$dlDir/$fulltitle.$fileOutExt"
                     if ((Test-Path("$dlDir/$fulltitle.$fileOutExt")) -eq $true) {
-                        Write-Host "Clipping Complete"
+                        Write-output "Clipping Complete"
                     }
                     else {
-                        Write-Host "Clipping Unsuccessful"
+                        Write-output "Clipping Unsuccessful"
                     }
                 }
             }
@@ -215,7 +207,7 @@ $clipper = {
                     $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/clip$clipnumout.mkv`" "
                     $stitchCmdMapInputs = $stitchCmdMapInputs + "[$mapperNum`:v:0][$mapperNum`:a:0]"
                     $stitchCmdMapInputsCount ++
-                    if (($hlrwStandards -eq "Y" -or $hlrwStandards -eq "y") -and ($parsernum -gt 1)) {
+                    if ($parsernum -gt 1) {
                         $mapperNum ++
                         $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/blackscreen.mkv`" "
                         $stitchCmdMapInputs = $stitchCmdMapInputs + "[$mapperNum`:v:0][$mapperNum`:a:0]"
@@ -228,7 +220,7 @@ $clipper = {
                         $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/clip$clipnumout.mkv`" "
                         $stitchCmdMapInputs = $stitchCmdMapInputs + "[$mapperNum`:v:0][$mapperNum`:a:0]"
                         $stitchCmdMapInputsCount ++
-                        if (($hlrwStandards -eq "Y" -or $hlrwStandards -eq "y") -and ($parsernum -gt 1)) {
+                        if ($parsernum -gt 1) {
                             $mapperNum ++
                             $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/blackscreen.mkv`" "
                             $stitchCmdMapInputs = $stitchCmdMapInputs + "[$mapperNum`:v:0][$mapperNum`:a:0]"
@@ -236,7 +228,7 @@ $clipper = {
                         }
                     }
                     else {
-                        Write-Host "Clipping Unsuccessful"
+                        Write-output "Clipping Unsuccessful"
                     }
                 }
             }
@@ -245,10 +237,10 @@ $clipper = {
             if ($miniclipnum -eq 1) {
                 ffmpeg -y -ss $clipsSps[$clipnum] -i ($glink) -t $clipsRt[$clipnum] "$dlDir/$fulltitle.$fileOutExt"
                 if ((Test-Path("$dlDir/$fulltitle.$fileOutExt")) -eq $true) {
-                    Write-Host "Clipping Complete"
+                    Write-output "Clipping Complete"
                 }
                 else {
-                    Write-Host "Clipping Unsuccessful"
+                    Write-output "Clipping Unsuccessful"
                 }
             }
             if ($miniclipnum -ge 2) {
@@ -256,7 +248,7 @@ $clipper = {
                 $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/clip$clipnumout.mkv`" "
                 $stitchCmdMapInputs = $stitchCmdMapInputs + "[$mapperNum`:v:0][$mapperNum`:a:0]"
                 $stitchCmdMapInputsCount ++
-                if (($hlrwStandards -eq "Y" -or $hlrwStandards -eq "y") -and ($parsernum -gt 1)) {
+                if ($parsernum -gt 1) {
                     $mapperNum ++
                     $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/blackscreen.mkv`" "
                     $stitchCmdMapInputs = $stitchCmdMapInputs + "[$mapperNum`:v:0][$mapperNum`:a:0]"
@@ -270,35 +262,28 @@ $clipper = {
         $parserNum --
     }
     $stitchCmdMapInputs = $stitchCmdMapInputs + "concat=n=$stitchCmdMapInputsCount`:v=1:a=1[outv][outa]"
-    $stitchCmd = "ffmpeg -y -hide_banner -loglevel error $stitchCmdInputs -filter_complex `"$stitchCmdMapInputs`" -map `"[outv]`" -map `"[outa]`" -x264-params keyint=24:min-keyint=1 `"$dlDir/$fulltitle.$fileOutExt`""
-    if ($needsstitching -eq "Y" -or $needsstitching -eq "y") {
-        if ($miniclipnum -ge 2) {
-            if ($hlrwStandards -eq "Y" -or $hlrwStandards -eq "y") {
-                $clipresolution = ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 "$tempdir/clip1.mkv"
-                $cliprate = ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of csv=s=x:p=0 "$tempdir/clip1.mkv"
-                ffmpeg -y -f lavfi -i color=black:s="$clipresolution":r=30000/1000 -f lavfi -i anullsrc -ar $cliprate -ac 2 -t 3 "$tempdir/blackscreen.mkv"
-            }
-            Invoke-Expression $stitchCmd
-            if ((Test-Path("$dlDir/$fulltitle.$fileOutExt")) -eq $true) {
-                Write-Host "Clipping Complete"
-            }
-            else {
-                Write-Host "Clipping Unsuccessful"
-            }
-            $parsernum = $miniclipnum
-            $clipnumout = 1
-            if ($hlrwStandards -eq "Y" -or $hlrwStandards -eq "y") {
-                remove-item "$tempdir/blackscreen.mkv"  
-            }
-            while ($parserNum -gt 0) {
-                remove-Item -path "$tempdir/clip$clipnumout.mkv"
-                $clipnumout ++
-                $parserNum --
-            }
+    $stitchCmd = "ffmpeg -y -hide_banner -loglevel error $stitchCmdInputs -filter_complex `"$stitchCmdMapInputs`" -map `"[outv]`" -map `"[outa]`" -x264-params keyint=24:min-keyint=1 `"$dlDir/output.$fileOutExt`""
+    if ($miniclipnum -ge 2) {
+        $clipresolution = ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 "$tempdir/clip1.mkv"
+        $cliprate = ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of csv=s=x:p=0 "$tempdir/clip1.mkv"
+        ffmpeg -y -f lavfi -i color=black:s="$clipresolution":r=30000/1000 -f lavfi -i anullsrc -ar $cliprate -ac 2 -t 3 "$tempdir/blackscreen.mkv"
+        Invoke-Expression $stitchCmd
+        Rename-Item -Path "$dlDir/output.$fileOutExt" -NewName "$fulltitle.$fileOutExt"
+        if ((Test-Path("$dlDir/$fulltitle.$fileOutExt")) -eq $true) {
+            Write-output "Clipping Complete"
         }
-        else {return}
+        else {
+            Write-output "Clipping Unsuccessful"
+        }
+        $parsernum = $miniclipnum
+        $clipnumout = 1
+        remove-item "$tempdir/blackscreen.mkv"  
+        while ($parserNum -gt 0) {
+            remove-Item -path "$tempdir/clip$clipnumout.mkv"
+            $clipnumout ++
+            $parserNum --
+        }
     }
     else {return}
 }
-#Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope Process
 &$clipper
