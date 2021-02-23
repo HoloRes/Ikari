@@ -17,7 +17,9 @@
   },
   "homepage": "https://github.com/HoloRes/Ikari#readme",
   "dependencies": {
-    "discord.js": "^12.5.1"
+    "delivery": "0.0.6",
+    "discord.js": "^12.5.1",
+    "socket.io-client": "^3.1.1"
   },
   "devDependencies": {
     "eslint": "^7.19.0",

@@ -2,10 +2,12 @@
 const Discord = require('discord.js');
 
 // Local Files
-const config = require('./config/config.json');
+const config = require('./config.json');
 const clipper = require('./tools/clipper.js');
 
 // Variables
+
+// Main
 
 const client = new Discord.Client({
 	partials: ['GUILD_MEMBER', 'MESSAGE', 'REACTION'],
@@ -14,7 +16,7 @@ exports.client = client;
 
 client.on('ready', () => {
 	// eslint-disable-next-line no-console
-	console.log('ready');
+	console.log('READY');
 });
 
 client.on('message', (message) => {
@@ -30,7 +32,7 @@ client.on('message', (message) => {
 			break;
 		}
 		if (args[4] === 'mkv' || args[4] === 'mp4') {
-			clipper.clipVideo(args[0], args[1], args[2], args[3], args[4], message);
+			clipper.clipVideo(args[0], args[1], args[2], args[3], args[4]);
 		} else {
 			message.channel.send('Missing or Incorrect Arguments');
 		}
@@ -46,4 +48,4 @@ client.on('message', (message) => {
 	}
 });
 
-client.login(config.discord.token);
+client.login(config.discord.authToken);

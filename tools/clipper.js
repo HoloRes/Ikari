@@ -1,27 +1,31 @@
 /* eslint-disable no-console */
-const { exec } = require('child_process');
 const fs = require('fs');
+const dl = require('delivery');
+const io = require('socket.io-client');
 
-function clipVideo(videoType, videoLink, timestamps, fileName, fileExt, message) {
-	console.log('REGISTERED');
-	exec(`pwsh ./tools/clipper.ps1 -videotype ${videoType} -inlink ${videoLink} -timestampsIn ${timestamps} -dlDir "." -fulltitle ${fileName} -fileOutExt ${fileExt}`, (error, stdout) => {
-		console.log(stdout);
-		const clippedFileStats = fs.statSync(`${fileName}.${fileExt}`);
-		console.log(clippedFileStats.size / (1024 * 1024));
-		if (error !== null) {
-			console.log(`exec error: ${error}`);
-		}
-		if ((clippedFileStats.size / (1024 * 1024)) >= 8) {
-			message.channel.send('Clipped File Too Large, Cannot Send VIA Discord')
-				.then(() => fs.unlink(`${fileName}.${fileExt}`, (err) => {
-					if (err) console.log(err);
-				}));
+const config = require('../config.json');
+
+const socket = io(config['socket.io'].host, {
+	auth: {
+		token: config['socket.io'].authToken,
+	},
+});
+
+const delivery = dl.listen(socket);
+delivery.on('receive.success', (file) => {
+	fs.writeFile(file.name, file.buffer, (err) => {
+		if (err) {
+			console.log(err);
 		} else {
-			message.channel.send('Clipped File:', { files: [`${fileName}.${fileExt}`] })
-				.then(() => fs.unlink(`${fileName}.${fileExt}`, (err) => {
-					if (err) console.log(err);
-				}));
+			console.log(`FILE ${file.name} SAVED`);
 		}
+	});
+});
+
+function clipVideo(videoType, videoLink, timestamps, fileName, fileExt) {
+	socket.emit('request', videoType, videoLink, timestamps, fileName, fileExt);
+	socket.on('FAIL', () => {
+		console.log('Clipping Failed');
 	});
 }
 module.exports = { clipVideo };
