@@ -4,7 +4,7 @@ const { io } = require('../index.js');
 
 const idRegex = /(\?v=|be\/).{11}/g;
 
-function clipRequest([videoType, videoLink, timestamps, fileName, fileExt]) {
+function clipRequest(message, [videoType, videoLink, timestamps, fileName, fileExt]) {
 	console.log('WEEEE');
 	const id = videoLink.match(idRegex)[0].substring(3);
 

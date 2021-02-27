@@ -1,10 +1,16 @@
-{ 
+{
     "discord": {
         "prefix": "",
         "authToken": ""
     },
     "socket.io": {
-        "port": 0,
+        "port": 3000,
         "authToken": ""
+    },
+    "mongodb": {
+        "host": "",
+        "username": "",
+        "password": "",
+        "database": ""
     }
 }

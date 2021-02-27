@@ -2,11 +2,23 @@
 const Discord = require('discord.js');
 const http = require('http');
 const { Server: SocketIO } = require('socket.io');
+const sequence = require('mongoose-sequence');
+const mongoose = require('mongoose');
 
 // Config
 const config = require('./config.json');
 
 // Variables
+
+// Mongoose
+mongoose.connect(`mongodb+srv://${config.mongodb.username}:${config.mongodb.password}@${config.mongodb.host}/${config.mongodb.database}`, {
+	useNewUrlParser: true,
+	useUnifiedTopology: true,
+	useFindAndModify: false,
+});
+const AutoIncrement = sequence(mongoose);
+
+exports.AutoIncrement = AutoIncrement;
 
 const client = new Discord.Client({
 	partials: ['GUILD_MEMBER', 'MESSAGE', 'REACTION'],
@@ -44,7 +56,7 @@ client.on('message', (message) => {
 			break;
 		}
 		if (args[4] === 'mkv' || args[4] === 'mp4') {
-			clipRequest(args);
+			clipRequest(message, args);
 		} else {
 			message.channel.send('Missing or Incorrect Arguments');
 		}
@@ -60,4 +72,4 @@ client.on('message', (message) => {
 	}
 });
 
-client.login(config.discord.authToken);
+client.login(config.discord.token);
