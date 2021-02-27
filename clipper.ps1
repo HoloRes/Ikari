@@ -24,20 +24,26 @@ function parser($clipstamps) {
     $c1st2array=$clip1st2.split(":")
     $c1a1,$c1a2,$c1a3=$clip1st1.split(":")
     $c1b1,$c1b2,$c1b3=$clip1st2.split(":")
+    $c1a0 = 0
     $c1a1 = [int]$c1a1
     $c1a2 = [int]$c1a2
     $c1a3 = [int]$c1a3
+    $c1b0 = 0
     $c1b1 = [int]$c1b1
     $c1b2 = [int]$c1b2
     $c1b3 = [int]$c1b3
     if ($c1st1array.length -eq 2) {
+        while ($c1a1 -ge 60) {
+            $c1a1 = $c1a1 - 60
+            $c1a0 ++
+        }
         if (($c1a1.tostring().length) -eq 1) {
             $c1a1 = "0$c1a1"
         }
         if (($c1a2.tostring().length) -eq 1) {
             $c1a2 = "0$c1a2"
         }
-        $tsin = "00`:$c1a1`:$c1a2`:00"
+        $tsin = "$c1a0`:$c1a1`:$c1a2`:00"
     }
     if ($c1st1array.length -eq 3) {
         if (($c1a1.tostring().length) -eq 1) {
@@ -52,13 +58,17 @@ function parser($clipstamps) {
         $tsin = "$c1a1`:$c1a2`:$c1a3`:00"
     }
     if ($c1st2array.length -eq 2) {
+        while ($c1b1 -ge 60) {
+            $c1b1 = $c1b1 - 60
+            $c1b0 ++
+        }
         if (($c1b1.tostring().length) -eq 1) {
             $c1b1 = "0$c1b1"
         }
         if (($c1b2.tostring().length) -eq 1) {
             $c1b2 = "0$c1b2"
         }
-        $tein = "00`:$c1b1`:$c1b2`:00"
+        $tein = "$c1b0`:$c1b1`:$c1b2`:00"
     }
     if ($c1st2array.length -eq 3) {
         if (($c1b1.tostring().length) -eq 1) {
@@ -265,8 +275,9 @@ $clipper = {
     $stitchCmd = "ffmpeg -y -hide_banner -loglevel error $stitchCmdInputs -filter_complex `"$stitchCmdMapInputs`" -map `"[outv]`" -map `"[outa]`" -x264-params keyint=24:min-keyint=1 `"$dlDir/output.$fileOutExt`""
     if ($miniclipnum -ge 2) {
         $clipresolution = ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 "$tempdir/clip1.mkv"
-        $cliprate = ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of csv=s=x:p=0 "$tempdir/clip1.mkv"
-        ffmpeg -y -f lavfi -i color=black:s="$clipresolution":r=30000/1000 -f lavfi -i anullsrc -ar $cliprate -ac 2 -t 3 "$tempdir/blackscreen.mkv"
+        $clipbitrate = ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of csv=s=x:p=0 "$tempdir/clip1.mkv"
+        $clipframerate = ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of csv=s=x:p=0 "$tempdir/clip1.mkv"
+        ffmpeg -y -f lavfi -i color=black:s="$clipresolution":r=$clipframerate -f lavfi -i anullsrc -ar $clipbitrate -ac 2 -t 3 "$tempdir/blackscreen.mkv"
         Invoke-Expression $stitchCmd
         Rename-Item -Path "$dlDir/output.$fileOutExt" -NewName "$fulltitle.$fileOutExt"
         if ((Test-Path("$dlDir/$fulltitle.$fileOutExt")) -eq $true) {
