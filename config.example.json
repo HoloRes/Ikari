@@ -1,0 +1,10 @@
+{ 
+    "discord": {
+        "prefix": "",
+        "authToken": ""
+    },
+    "socket.io": {
+        "port": 0,
+        "authToken": ""
+    }
+}
