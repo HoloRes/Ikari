@@ -31,7 +31,7 @@ socket.on('request', ({
 	// TODO: Files get saved under internalId as name, make sure to rename when uploading to Nextcloud
 	// This OS check is for development purposes only; will be removed in the future
 	if (os.platform() === 'win32') {
-		const cmd = `./clipper.ps1 -videotype ${videoType} -inlink ${videoLink} -timestampsIn "${timestamps}" -dlDir "." -fulltitle ${internalId} -fileOutExt ${fileExt}`;
+		const cmd = `./clipper.ps1 -videotype ${videoType} -inlink ${videoLink} -timestampsIn "${timestamps}" -dlDir "./download/" -fulltitle ${internalId} -fileOutExt ${fileExt}`;
 		exec(cmd, { shell: 'powershell.exe' }, (error, stdout) => {
 			console.log(stdout);
 			console.log(error);
@@ -46,7 +46,7 @@ socket.on('request', ({
 			return socket.emit('PASS', { internalId });
 		});
 	} else {
-		const cmd = `pwsh ./clipper.ps1 -videotype ${videoType} -inlink ${videoLink} -timestampsIn "${timestamps}" -dlDir "." -fulltitle ${internalId} -fileOutExt ${fileExt}`;
+		const cmd = `pwsh ./clipper.ps1 -videotype ${videoType} -inlink ${videoLink} -timestampsIn "${timestamps}" -dlDir "./download/" -fulltitle ${internalId} -fileOutExt ${fileExt}`;
 		exec(cmd, (error, stdout) => {
 			console.log(stdout);
 			console.log(error);
