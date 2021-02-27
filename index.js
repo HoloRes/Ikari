@@ -15,7 +15,14 @@ const socket = io(config.host, {
 	},
 });
 
-socket.on('request', (videoType, videoLink, timestamps, fileName, fileExt) => {
+socket.on('request', ({
+	internalId,
+	videoType,
+	videoLink,
+	timestamps,
+	fileName,
+	fileExt,
+}) => {
 	// This OS check is for development purposes only; will be removed in the future
 	if (os.platform() === 'win32') {
 		const cmd = `./clipper.ps1 -videotype ${videoType} -inlink ${videoLink} -timestampsIn "${timestamps}" -dlDir "." -fulltitle ${fileName} -fileOutExt ${fileExt}`;
@@ -24,13 +31,13 @@ socket.on('request', (videoType, videoLink, timestamps, fileName, fileExt) => {
 			console.log(error);
 			if (error !== null) {
 				console.log(error);
-				return socket.emit('FAIL');
+				return socket.emit('FAIL', { internalId });
 			}
 			// WebDAV upload here
-			fs.unlink(`${fileName}.${fileExt}`, (err) => {
+			/* fs.unlink(`${fileName}.${fileExt}`, (err) => {
 				if (err) console.log(err);
-			});
-			return socket.emit('PASS');
+			}); */
+			return socket.emit('PASS', { internalId });
 		});
 	} else {
 		const cmd = `pwsh ./clipper.ps1 -videotype ${videoType} -inlink ${videoLink} -timestampsIn "${timestamps}" -dlDir "." -fulltitle ${fileName} -fileOutExt ${fileExt}`;
@@ -39,13 +46,13 @@ socket.on('request', (videoType, videoLink, timestamps, fileName, fileExt) => {
 			console.log(error);
 			if (error !== null) {
 				console.log(error);
-				return socket.emit('FAIL');
+				return socket.emit('FAIL', { internalId });
 			}
 			// WebDAV upload here
-			fs.unlink(`${fileName}.${fileExt}`, (err) => {
+			/* fs.unlink(`${fileName}.${fileExt}`, (err) => {
 				if (err) console.log(err);
-			});
-			return socket.emit('PASS');
+			}); */
+			return socket.emit('PASS', { internalId });
 		});
 	}
 });
