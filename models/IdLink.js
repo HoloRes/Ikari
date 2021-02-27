@@ -5,12 +5,12 @@ const mongoose = require('mongoose');
 const { AutoIncrement } = require('../index');
 
 // Schema
-const LogSchema = new mongoose.Schema({
+const ProjectSchema = new mongoose.Schema({
 	_id: Number,
 	clickUpId: String,
 	discordMessageId: String,
 }, { _id: false });
 
-LogSchema.plugin(AutoIncrement);
+ProjectSchema.plugin(AutoIncrement);
 
-module.exports = mongoose.model('ModLogItem', LogSchema, 'modlog');
+module.exports = mongoose.model('Project', ProjectSchema, 'projects');
