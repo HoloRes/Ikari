@@ -1,14 +1,30 @@
 /* eslint-disable no-console */
+const { nanoid } = require('nanoid');
 const { io } = require('../index.js');
 
-function clipRequest(videoType, videoLink, timestamps, fileName, fileExt) {
+const idRegex = /(\?v=|be\/).{11}/g;
+
+function clipRequest([videoType, videoLink, timestamps, fileName, fileExt]) {
 	console.log('WEEEE');
-	io.emit('request', videoType, videoLink, timestamps, fileName, fileExt);
+	const id = videoLink.match(idRegex)[0].substring(3);
+
+	// eslint-disable-next-line max-len
+	// TODO: Internal id needs to be saved somewhere, with an additional nanoid just to make sure the same id doesn't exists twice
+	io.emit('request', {
+		internalId: `${id}_${nanoid()}`,
+		videoType,
+		videoLink,
+		timestamps,
+		fileName,
+		fileExt,
+	});
 }
 exports.clipRequest = clipRequest;
 
 io.on('connection', (socket) => {
-	socket.on('PASS', () => {
+	// eslint-disable-next-line no-unused-vars
+	socket.on('PASS', (data) => {
+		// TODO: Data should have the internalId
 		console.log('Clipping Succeeded');
 	});
 

@@ -18,6 +18,7 @@
   "homepage": "https://github.com/HoloRes/Ikari#readme",
   "dependencies": {
     "discord.js": "^12.5.1",
+    "nanoid": "^3.1.20",
     "socket.io": "^3.1.2"
   },
   "devDependencies": {

@@ -44,7 +44,7 @@ client.on('message', (message) => {
 			break;
 		}
 		if (args[4] === 'mkv' || args[4] === 'mp4') {
-			clipRequest(args[0], args[1], args[2], args[3], args[4]);
+			clipRequest(args);
 		} else {
 			message.channel.send('Missing or Incorrect Arguments');
 		}
