@@ -5,11 +5,10 @@ const { io } = require('../index.js');
 const idRegex = /(\?v=|be\/).{11}/g;
 
 function clipRequest(message, [videoType, videoLink, timestamps, fileName, fileExt]) {
-	console.log('WEEEE');
 	const id = videoLink.match(idRegex)[0].substring(3);
 
 	// eslint-disable-next-line max-len
-	// TODO: Internal id needs to be saved somewhere, with an additional nanoid just to make sure the same id doesn't exists twice
+	// TODO: Instead of nano id, use ClickUp's internal ID
 	io.emit('request', {
 		internalId: `${id}_${nanoid()}`,
 		videoType,
@@ -22,13 +21,13 @@ function clipRequest(message, [videoType, videoLink, timestamps, fileName, fileE
 exports.clipRequest = clipRequest;
 
 io.on('connection', (socket) => {
-	// eslint-disable-next-line no-unused-vars
 	socket.on('PASS', (data) => {
-		// TODO: Data should have the internalId
-		console.log('Clipping Succeeded');
+		// TODO: ClickUp update status to DONE
+		console.log('Clipping Succeeded', data.internalId);
 	});
 
-	socket.on('FAIL', () => {
-		console.log('Clipping Failed');
+	socket.on('FAIL', (data) => {
+		// TODO: ClickUp update status to FAILED
+		console.log('Clipping Failed', data.internalId);
 	});
 });
