@@ -4,12 +4,14 @@ const http = require('http');
 const { Server: SocketIO } = require('socket.io');
 const sequence = require('mongoose-sequence');
 const mongoose = require('mongoose');
+const express = require('express');
 
 // Config
 const config = require('./config.json');
 
 // Variables
 
+// Pre-init
 // Mongoose
 mongoose.connect(`mongodb+srv://${config.mongodb.username}:${config.mongodb.password}@${config.mongodb.host}/${config.mongodb.database}`, {
 	useNewUrlParser: true,
@@ -41,13 +43,15 @@ io.use((socket, next) => {
 	});
 exports.io = io;
 
-// Local Files
-const { clipRequest } = require('./tools/clipper.js'); // THIS IS HERE FOR A REASON, DO NOT MOVE ABOVE
+// Init
+const { clipRequest } = require('./tools/clipper.js');
+const jira = require('./jira');
 
 client.on('ready', () => {
 	console.log('READY');
 });
 
+// Command handler
 client.on('message', (message) => {
 	if (message.author.bot || !message.content.startsWith(config.discord.prefix)) return;
 	const cmd = message.content.slice(config.discord.prefix.length)
