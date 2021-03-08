@@ -25,15 +25,20 @@ const client = new Discord.Client({
 });
 exports.client = client;
 
-const server = http.createServer().listen(config['socket.io'].port);
+const server = http.createServer()
+	.listen(config['socket.io'].port);
 
 const io = new SocketIO(server, { serveClient: false });
 io.use((socket, next) => {
-	if (socket.handshake.auth && socket.handshake.auth.token === config['socket.io'].authToken) next();
-	else next(new Error('Socket.io Auth Error'));
-}).on('connection', (socket) => {
-	console.log(`Connected to ${socket.id}`);
-});
+	if (socket.handshake.auth && socket.handshake.auth.token === config['socket.io'].authToken) {
+		next();
+	} else {
+		next(new Error('Socket.io Auth Error'));
+	}
+})
+	.on('connection', (socket) => {
+		console.log(`Connected to ${socket.id}`);
+	});
 exports.io = io;
 
 // Local Files
@@ -45,13 +50,15 @@ client.on('ready', () => {
 
 client.on('message', (message) => {
 	if (message.author.bot || !message.content.startsWith(config.discord.prefix)) return;
-	const cmd = message.content.slice(config.discord.prefix.length).split(' ');
+	const cmd = message.content.slice(config.discord.prefix.length)
+		.split(' ');
 	const args = cmd.slice(1);
 	// Temporarily keeping all commands here
 	// Gonna level with you, most of this is held together with duct tape and prayers atm
 	switch (cmd[0]) {
 	case 'clip': {
 		if (args[0] === 'help' && args[1] === null) {
+			// TODO
 			message.channel.send('Usage:\nTODO: add usage guide');
 			break;
 		}
@@ -63,6 +70,7 @@ client.on('message', (message) => {
 		break;
 	}
 	case 'help': {
+		// TODO: Replace i! with prefix
 		message.channel.send('Currently Functional Commands:\n```clip - Type "i!clip help" for usage```');
 		break;
 	}
