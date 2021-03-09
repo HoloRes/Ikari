@@ -1,8 +1,6 @@
-// Modules
+// Imports
 const Discord = require('discord.js');
-const http = require('http');
 const { Server: SocketIO } = require('socket.io');
-const sequence = require('mongoose-sequence');
 const mongoose = require('mongoose');
 const express = require('express');
 
@@ -12,24 +10,25 @@ const config = require('./config.json');
 // Variables
 
 // Pre-init
+// TODO: Add Sentry and Loki
 // Mongoose
 mongoose.connect(`mongodb+srv://${config.mongodb.username}:${config.mongodb.password}@${config.mongodb.host}/${config.mongodb.database}`, {
 	useNewUrlParser: true,
 	useUnifiedTopology: true,
 	useFindAndModify: false,
 });
-const AutoIncrement = sequence(mongoose);
 
-exports.AutoIncrement = AutoIncrement;
-
+// Discord
 const client = new Discord.Client({
 	partials: ['GUILD_MEMBER', 'MESSAGE', 'REACTION'],
 });
 exports.client = client;
 
-const server = http.createServer()
-	.listen(config['socket.io'].port);
+// Express
+const app = express();
+const server = app.listen(config['socket.io'].port);
 
+// Socket.IO
 const io = new SocketIO(server, { serveClient: false });
 io.use((socket, next) => {
 	if (socket.handshake.auth && socket.handshake.auth.token === config['socket.io'].authToken) {
@@ -46,6 +45,9 @@ exports.io = io;
 // Init
 const { clipRequest } = require('./tools/clipper.js');
 const jira = require('./jira');
+
+app.use(express.json());
+app.use(jira.router);
 
 client.on('ready', () => {
 	console.log('READY');
