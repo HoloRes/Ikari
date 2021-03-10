@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 
 // Schema
 const ProjectSchema = new mongoose.Schema({
-	jiraKey: String,
+	jiraId: String,
 	discordMessageId: String,
 });
 

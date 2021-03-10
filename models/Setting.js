@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 
 // Schema
 const SettingSchema = new mongoose.Schema({
-	setting: String,
+	_id: String, // Setting name
 	value: String,
 });
 

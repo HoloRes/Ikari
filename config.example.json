@@ -13,8 +13,13 @@
         "password": "",
         "database": ""
     },
+    "oauthServer": {
+        "url": "",
+        "clientId": "",
+        "clientSecret": ""
+    },
     "jira": {
-        "host": "",
+        "url": "",
         "username": "",
         "password": ""
     }
