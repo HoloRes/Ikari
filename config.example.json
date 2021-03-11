@@ -13,6 +13,12 @@
         "password": "",
         "database": ""
     },
+    "mongoDbOauth": {
+        "host": "",
+        "username": "",
+        "password": "",
+        "database": ""
+    },
     "oauthServer": {
         "url": "",
         "clientId": "",

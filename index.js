@@ -86,4 +86,6 @@ client.on('message', (message) => {
 	}
 });
 
+client.on('messageReactionAdd', jira.messageReactionAddHandler);
+
 client.login(config.discord.token);
