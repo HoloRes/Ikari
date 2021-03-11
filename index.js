@@ -5,9 +5,17 @@ const { exec } = require('child_process');
 const os = require('os');
 const io = require('socket.io-client');
 const fs = require('fs');
+const createWebdavClient = require('webdav');
 
 // Local files
 const config = require('./config.json');
+
+const webdavClient = createWebdavClient(
+	'nextcloud link',
+	{
+		// auth here
+	},
+);
 
 const socket = io(config.host, {
 	auth: {
@@ -24,11 +32,12 @@ socket.on('request', ({
 	videoType,
 	videoLink,
 	timestamps,
-	// eslint-disable-next-line no-unused-vars
 	fileName,
 	fileExt,
 }) => {
-	// TODO: Files get saved under internalId as name, make sure to rename when uploading to Nextcloud
+	if (webdavClient.exists('/projects/folder') === false) {
+		webdavClient.createDirectory('/projects/folder');
+	}
 	// This OS check is for development purposes only; will be removed in the future
 	if (os.platform() === 'win32') {
 		const cmd = `./clipper.ps1 -videotype ${videoType} -inlink ${videoLink} -timestampsIn "${timestamps}" -dlDir "./download/" -fulltitle ${internalId} -fileOutExt ${fileExt}`;
@@ -40,9 +49,11 @@ socket.on('request', ({
 				return socket.emit('FAIL', { internalId });
 			}
 			// WebDAV upload here
-			/* fs.unlink(`${fileName}.${fileExt}`, (err) => {
-				if (err) console.log(err);
-			}); */
+			const readStream = fs.createReadStream(`./download/${internalId}.${fileExt}`);
+			webdavClient.putFileContents(`/projects/folder/${fileName}.${fileExt}`, readStream)
+				.then(fs.unlink(`${internalId}.${fileExt}`, (err) => {
+					if (err) console.log(err);
+				}));
 			return socket.emit('PASS', { internalId });
 		});
 	} else {
@@ -55,9 +66,11 @@ socket.on('request', ({
 				return socket.emit('FAIL', { internalId });
 			}
 			// WebDAV upload here
-			/* fs.unlink(`${fileName}.${fileExt}`, (err) => {
-				if (err) console.log(err);
-			}); */
+			const readStream = fs.createReadStream(`./download/${internalId}.${fileExt}`);
+			webdavClient.putFileContents(`/projects/folder/${fileName}.${fileExt}`, readStream)
+				.then(fs.unlink(`${internalId}.${fileExt}`, (err) => {
+					if (err) console.log(err);
+				}));
 			return socket.emit('PASS', { internalId });
 		});
 	}
