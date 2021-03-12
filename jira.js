@@ -219,37 +219,43 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 	}
 
 	if (!valid) reactionUser.send("You can't be assigned in the current workflow status.");
-	const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
-		params: { id: reactionUser.id },
-		auth: {
-			username: config.oauthServer.clientId,
-			password: config.oauthServer.clientSecret,
-		},
-	}).catch((err) => {
-		console.log(err.response.data);
-		throw new Error(err);
-	});
-
-	const embed = msg.embeds[0].spliceFields(1, 1, {
-		name: 'Assignee',
-		value: `<@${reactionUser.id}>`,
-	});
-
-	if (!user) reactionUser.send('Could not find your Jira account, please sign in once to link your account.');
 	else {
-		axios.put(`${url}/issue/${link.jiraId}/assignee`, {
-			name: user.username,
-		}, {
+		const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
+			params: { id: reactionUser.id },
 			auth: {
-				username: config.jira.username,
-				password: config.jira.password,
+				username: config.oauthServer.clientId,
+				password: config.oauthServer.clientSecret,
 			},
-		}).then(() => {
-			msg.edit(embed);
-			msg.reactions.removeAll();
-		}).catch((err) => {
-			console.log(err.response.data);
-			throw new Error(err);
+		})
+			.catch((err) => {
+				console.log(err.response.data);
+				throw new Error(err);
+			});
+
+		const embed = msg.embeds[0].spliceFields(1, 1, {
+			name: 'Assignee',
+			value: `<@${reactionUser.id}>`,
 		});
+
+		if (!user) {
+			reactionUser.send('Could not find your Jira account, please sign in once to link your account.');
+		} else {
+			axios.put(`${url}/issue/${link.jiraId}/assignee`, {
+				name: user.username,
+			}, {
+				auth: {
+					username: config.jira.username,
+					password: config.jira.password,
+				},
+			})
+				.then(() => {
+					msg.edit(embed);
+					msg.reactions.removeAll();
+				})
+				.catch((err) => {
+					console.log(err.response.data);
+					throw new Error(err);
+				});
+		}
 	}
 };
