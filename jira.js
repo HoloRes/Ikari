@@ -6,6 +6,7 @@ const axios = require('axios');
 // Models
 const IdLink = require('./models/IdLink');
 const Setting = require('./models/Setting');
+const GroupLink = require('./models/GroupLink');
 
 // Local files
 const config = require('./config.json');
@@ -85,7 +86,6 @@ router.post('/webhook', async (req, res) => {
 				});
 				msg.edit(embed);
 
-				// TODO: Check workflow status and add reaction if needed
 				const status = req.body.issue.fields.status.name;
 				if (status === 'Open' || status === 'Rejected' || status === 'Being clipped' || status === 'Uploaded') return;
 
@@ -138,8 +138,6 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 		.catch((err) => { throw new Error(err); });
 	if (!link) return;
 
-	// TODO: Role validation
-
 	const projectsChannelSetting = await Setting.findById('projectsChannel').lean().exec()
 		.catch((err) => {
 			throw new Error(err);
@@ -157,33 +155,70 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 			throw new Error(err);
 		});
 
+	const guild = await messageReaction.message.guild.fetch();
+	const member = await guild.members.fetch(reactionUser);
+
 	const languages = msg.embeds[0].fields[3].value.split(', ');
-	switch (msg.embeds[0].fields[0].value) {
-	case 'Translating':
-		const inGroups = [];
-		break;
-	case 'Translation Check':
-		const inGroups2 = [];
-		break;
-	case 'Proofreading':
-		return issue.get('assignee')?.isInGroup('Proofreader');
-		break;
-	case 'Subbing':
-		return issue.get('assignee')?.isInGroup('Subtitler');
-		break;
-	case 'PreQC':
-		return issue.get('assignee')?.isInGroup('Pre-Quality Control');
-		break;
-	case 'Video Editing':
-		return issue.get('assignee')?.isInGroup('Video Editor');
-		break;
-	case 'Quality Control':
-		return issue.get('assignee')?.isInGroup('Quality Control');
-		break;
-	default:
-		return false;
-		break;
+	let valid = false;
+
+	const status = msg.embeds[0].fields[0].value;
+
+	if (status === 'Translating') {
+		const roles = await Promise.all(languages.map(async (language) => {
+			const { _id: discordId } = await GroupLink.findOne({ jiraName: `Translator - ${language}` }).exec()
+				.catch((err) => {
+					throw new Error(err);
+				});
+			return member.roles.cache.has(discordId);
+		}));
+		valid = roles.includes(true);
+	} else if (status === 'Translation Check') {
+		const roles = await Promise.all(languages.map(async (language) => {
+			const { _id: discordId } = await GroupLink.findOne({ jiraName: `Translation Checker - ${language}` }).exec()
+				.catch((err) => {
+					throw new Error(err);
+				});
+			return member.roles.cache.has(discordId);
+		}));
+		valid = roles.includes(true);
+	} else if (status === 'Proofreading') {
+		// eslint-disable-next-line no-case-declarations
+		const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Proofreader' }).exec()
+			.catch((err) => {
+				throw new Error(err);
+			});
+		valid = member.roles.cache.has(discordId);
+	} else if (status === 'Subbing') {
+		// eslint-disable-next-line no-case-declarations
+		const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Subtitler' }).exec()
+			.catch((err) => {
+				throw new Error(err);
+			});
+		valid = member.roles.cache.has(discordId);
+	} else if (status === 'PreQC') {
+		// eslint-disable-next-line no-case-declarations
+		const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Pre-Quality Control' }).exec()
+			.catch((err) => {
+				throw new Error(err);
+			});
+		valid = member.roles.cache.has(discordId);
+	} else if (status === 'Video Editing') {
+		// eslint-disable-next-line no-case-declarations
+		const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Video Editor' }).exec()
+			.catch((err) => {
+				throw new Error(err);
+			});
+		valid = member.roles.cache.has(discordId);
+	} else if (status === 'Quality Control') {
+		// eslint-disable-next-line no-case-declarations
+		const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Quality Control' }).exec()
+			.catch((err) => {
+				throw new Error(err);
+			});
+		valid = member.roles.cache.has(discordId);
 	}
+
+	if (!valid) reactionUser.send("You can't be assigned in the current workflow status.");
 	const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
 		params: { id: reactionUser.id },
 		auth: {

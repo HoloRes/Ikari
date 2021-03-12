@@ -1,5 +1,6 @@
 // Imports
 const mongoose = require('mongoose');
+const { conn1 } = require('../index');
 
 // Schema
 const ProjectSchema = new mongoose.Schema({
@@ -7,4 +8,4 @@ const ProjectSchema = new mongoose.Schema({
 	discordMessageId: String,
 });
 
-module.exports = mongoose.model('Project', ProjectSchema, 'projects');
+module.exports = conn1.model('Project', ProjectSchema, 'projects');

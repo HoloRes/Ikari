@@ -12,7 +12,13 @@ const config = require('./config.json');
 // Pre-init
 // TODO: Add Sentry and Loki
 // Mongoose
-mongoose.connect(`mongodb+srv://${config.mongodb.username}:${config.mongodb.password}@${config.mongodb.host}/${config.mongodb.database}`, {
+exports.conn1 = mongoose.createConnection(`mongodb+srv://${config.mongodb.username}:${config.mongodb.password}@${config.mongodb.host}/${config.mongodb.database}`, {
+	useNewUrlParser: true,
+	useUnifiedTopology: true,
+	useFindAndModify: false,
+});
+
+exports.conn2 = mongoose.createConnection(`mongodb+srv://${config.mongoDbOauth.username}:${config.mongoDbOauth.password}@${config.mongoDbOauth.host}/${config.mongoDbOauth.database}`, {
 	useNewUrlParser: true,
 	useUnifiedTopology: true,
 	useFindAndModify: false,
