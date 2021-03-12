@@ -28,12 +28,12 @@ router.post('/webhook', async (req, res) => {
 			throw new Error(err);
 		});
 
+	if (!projectsChannelSetting) return;
+
 	const projectsChannel = await client.channels.fetch(projectsChannelSetting.value)
 		.catch((err) => {
 			throw new Error(err);
 		});
-
-	if (!projectsChannelSetting) return;
 
 	if (req.body.webhookEvent && req.body.webhookEvent === 'jira:issue_created') {
 		const link = new IdLink({
@@ -143,12 +143,12 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 			throw new Error(err);
 		});
 
+	if (!projectsChannelSetting) return;
+
 	const projectsChannel = await client.channels.fetch(projectsChannelSetting.value)
 		.catch((err) => {
 			throw new Error(err);
 		});
-
-	if (!projectsChannelSetting) return;
 
 	const msg = await projectsChannel.messages.fetch(link.discordMessageId)
 		.catch((err) => {
