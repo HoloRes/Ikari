@@ -242,6 +242,7 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 	if (reactionUser.bot || messageReaction.emoji.id !== '819518919739965490') return;
 	const link = await IdLink.findOne({ discordMessageId: messageReaction.message.id }).lean().exec()
 		.catch((err) => {
+			messageReaction.users.remove(reactionUser);
 			reactionUser.send('Assigning failed, please try again');
 			throw new Error(err);
 		});
@@ -249,12 +250,14 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 
 	const projectsChannelSetting = await Setting.findById('projectsChannel').lean().exec()
 		.catch((err) => {
+			messageReaction.users.remove(reactionUser);
 			reactionUser.send('Assigning failed, please try again');
 			throw new Error(err);
 		});
 
 	const artistsProjectsChannelSetting = await Setting.findById('artistsProjectsChannel').lean().exec()
 		.catch((err) => {
+			messageReaction.users.remove(reactionUser);
 			reactionUser.send('Assigning failed, please try again');
 			throw new Error(err);
 		});
@@ -263,12 +266,14 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 
 	const projectsChannel = await client.channels.fetch(projectsChannelSetting.value)
 		.catch((err) => {
+			messageReaction.users.remove(reactionUser);
 			reactionUser.send('Assigning failed, please try again');
 			throw new Error(err);
 		});
 
 	const artistsProjectsChannel = await client.channels.fetch(artistsProjectsChannelSetting.value)
 		.catch((err) => {
+			messageReaction.users.remove(reactionUser);
 			reactionUser.send('Assigning failed, please try again');
 			throw new Error(err);
 		});
@@ -279,6 +284,7 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 	if (link.type === 'translation') {
 		const msg = await projectsChannel.messages.fetch(link.discordMessageId)
 			.catch((err) => {
+				messageReaction.users.remove(reactionUser);
 				reactionUser.send('Assigning failed, please try again');
 				throw new Error(err);
 			});
@@ -293,6 +299,7 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 				const { _id: discordId } = await GroupLink.findOne({ jiraName: `Translator - ${language}` })
 					.exec()
 					.catch((err) => {
+						messageReaction.users.remove(reactionUser);
 						reactionUser.send('Assigning failed, please try again');
 						throw new Error(err);
 					});
@@ -304,6 +311,7 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 				const { _id: discordId } = await GroupLink.findOne({ jiraName: `Translation Checker - ${language}` })
 					.exec()
 					.catch((err) => {
+						messageReaction.users.remove(reactionUser);
 						reactionUser.send('Assigning failed, please try again');
 						throw new Error(err);
 					});
@@ -315,6 +323,7 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 			const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Proofreader' })
 				.exec()
 				.catch((err) => {
+					messageReaction.users.remove(reactionUser);
 					reactionUser.send('Assigning failed, please try again');
 					throw new Error(err);
 				});
@@ -324,6 +333,7 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 			const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Subtitler' })
 				.exec()
 				.catch((err) => {
+					messageReaction.users.remove(reactionUser);
 					reactionUser.send('Assigning failed, please try again');
 					throw new Error(err);
 				});
@@ -333,6 +343,7 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 			const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Pre-Quality Control' })
 				.exec()
 				.catch((err) => {
+					messageReaction.users.remove(reactionUser);
 					reactionUser.send('Assigning failed, please try again');
 					throw new Error(err);
 				});
@@ -342,6 +353,7 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 			const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Video Editor' })
 				.exec()
 				.catch((err) => {
+					messageReaction.users.remove(reactionUser);
 					reactionUser.send('Assigning failed, please try again');
 					throw new Error(err);
 				});
@@ -351,6 +363,7 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 			const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Quality Control' })
 				.exec()
 				.catch((err) => {
+					messageReaction.users.remove(reactionUser);
 					reactionUser.send('Assigning failed, please try again');
 					throw new Error(err);
 				});
@@ -358,6 +371,7 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 		}
 
 		if (!valid) {
+			messageReaction.users.remove(reactionUser);
 			reactionUser.send('You can\'t be assigned in the current workflow status.');
 		} else {
 			const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
@@ -379,6 +393,7 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 			});
 
 			if (!user) {
+				messageReaction.users.remove(reactionUser);
 				reactionUser.send('Could not find your Jira account, please sign in once to link your account.');
 			} else {
 				axios.put(`${url}/issue/${link.jiraId}/assignee`, {
@@ -394,6 +409,7 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 						msg.reactions.removeAll();
 					})
 					.catch((err) => {
+						messageReaction.users.remove(reactionUser);
 						reactionUser.send('Assigning failed, please try again');
 						console.log(err.response.data);
 						throw new Error(err);
@@ -403,6 +419,7 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 	} else if (link.type === 'artist') {
 		const msg = await artistsProjectsChannel.messages.fetch(link.discordMessageId)
 			.catch((err) => {
+				messageReaction.users.remove(reactionUser);
 				reactionUser.send('Assigning failed, please try again');
 				throw new Error(err);
 			});
@@ -410,6 +427,7 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 		const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Artist' })
 			.exec()
 			.catch((err) => {
+				messageReaction.users.remove(reactionUser);
 				reactionUser.send('Assigning failed, please try again');
 				throw new Error(err);
 			});
@@ -422,6 +440,7 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 				},
 			})
 				.catch((err) => {
+					messageReaction.users.remove(reactionUser);
 					reactionUser.send('Assigning failed, please try again');
 					console.log(err.response.data);
 					throw new Error(err);
@@ -433,6 +452,7 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 			});
 
 			if (!user) {
+				messageReaction.users.remove(reactionUser);
 				reactionUser.send('Could not find your Jira account, please sign in once to link your account.');
 			} else {
 				axios.put(`${url}/issue/${link.jiraId}/assignee`, {
@@ -448,11 +468,15 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 						msg.reactions.removeAll();
 					})
 					.catch((err) => {
+						messageReaction.users.remove(reactionUser);
 						reactionUser.send('Assigning failed, please try again');
 						console.log(err.response.data);
 						throw new Error(err);
 					});
 			}
-		} else reactionUser.send("You can't be assigned to this issue (no artist role)");
+		} else {
+			messageReaction.users.remove(reactionUser);
+			reactionUser.send('You can\'t be assigned to this issue (no artist role)');
+		}
 	}
 };
