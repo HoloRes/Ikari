@@ -1,33 +1,40 @@
-// Modules
+// Imports
 const Discord = require('discord.js');
-const http = require('http');
 const { Server: SocketIO } = require('socket.io');
-const sequence = require('mongoose-sequence');
 const mongoose = require('mongoose');
+const express = require('express');
 
 // Config
 const config = require('./config.json');
 
 // Variables
 
+// Pre-init
+// TODO: Add Sentry and Loki
 // Mongoose
-mongoose.connect(`mongodb+srv://${config.mongodb.username}:${config.mongodb.password}@${config.mongodb.host}/${config.mongodb.database}`, {
+exports.conn1 = mongoose.createConnection(`mongodb+srv://${config.mongodb.username}:${config.mongodb.password}@${config.mongodb.host}/${config.mongodb.database}`, {
 	useNewUrlParser: true,
 	useUnifiedTopology: true,
 	useFindAndModify: false,
 });
-const AutoIncrement = sequence(mongoose);
 
-exports.AutoIncrement = AutoIncrement;
+exports.conn2 = mongoose.createConnection(`mongodb+srv://${config.mongoDbOauth.username}:${config.mongoDbOauth.password}@${config.mongoDbOauth.host}/${config.mongoDbOauth.database}`, {
+	useNewUrlParser: true,
+	useUnifiedTopology: true,
+	useFindAndModify: false,
+});
 
+// Discord
 const client = new Discord.Client({
 	partials: ['GUILD_MEMBER', 'MESSAGE', 'REACTION'],
 });
 exports.client = client;
 
-const server = http.createServer()
-	.listen(config['socket.io'].port);
+// Express
+const app = express();
+const server = app.listen(config['socket.io'].port);
 
+// Socket.IO
 const io = new SocketIO(server, { serveClient: false });
 io.use((socket, next) => {
 	if (socket.handshake.auth && socket.handshake.auth.token === config['socket.io'].authToken) {
@@ -41,13 +48,18 @@ io.use((socket, next) => {
 	});
 exports.io = io;
 
-// Local Files
-const { clipRequest } = require('./tools/clipper.js'); // THIS IS HERE FOR A REASON, DO NOT MOVE ABOVE
+// Init
+const { clipRequest } = require('./tools/clipper.js');
+const jira = require('./jira');
+
+app.use(express.json());
+app.use(jira.router);
 
 client.on('ready', () => {
 	console.log('READY');
 });
 
+// Command handler
 client.on('message', (message) => {
 	if (message.author.bot || !message.content.startsWith(config.discord.prefix)) return;
 	const cmd = message.content.slice(config.discord.prefix.length)
@@ -79,5 +91,7 @@ client.on('message', (message) => {
 	}
 	}
 });
+
+client.on('messageReactionAdd', jira.messageReactionAddHandler);
 
 client.login(config.discord.token);

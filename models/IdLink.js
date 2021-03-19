@@ -1,16 +1,12 @@
-// Packages
+// Imports
 const mongoose = require('mongoose');
-
-// Local files
-const { AutoIncrement } = require('../index');
+const { conn1 } = require('../index');
 
 // Schema
 const ProjectSchema = new mongoose.Schema({
-	_id: Number,
-	clickUpId: String,
+	jiraId: String,
 	discordMessageId: String,
-}, { _id: false });
+	type: { type: String, enum: ['translation', 'artist'], required: true },
+});
 
-ProjectSchema.plugin(AutoIncrement);
-
-module.exports = mongoose.model('Project', ProjectSchema, 'projects');
+module.exports = conn1.model('Project', ProjectSchema, 'projects');
