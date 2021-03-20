@@ -1,8 +1,8 @@
-name: Create Docker image
+name: Create offloading server development Docker image
 on:
   push:
     branches:
-      - main
+      - 'feature/offloading_server/**'
 
 jobs:
   deploy:
@@ -12,16 +12,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Sentry Release
-        uses: getsentry/action-release@v1.1.5
-        env:
-          SENTRY_URL: ${{ secrets.SENTRY_URL }}
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-        with:
-          environment: production
-
       - name: Docker meta
         id: docker_meta
         uses: crazy-max/ghaction-docker-meta@v1
@@ -29,8 +19,8 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tag-sha: true
           tag-custom: |
-            latest
-            prod
+            offloading-latest
+            offloading-dev
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1

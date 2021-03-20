@@ -4,6 +4,8 @@ on:
     branches:
       - '**'
       - '!main'
+      - '!offloading_server'
+      - '!feature/offloading_server/**'
 
 jobs:
   deploy:
