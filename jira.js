@@ -47,9 +47,9 @@ router.post('/webhook', async (req, res) => {
 
 		let languages = '';
 
-		// TODO: Replace language field id for prod
+		//* Language field for dev: customfield_10202
 		// eslint-disable-next-line no-return-assign
-		req.body.issue.fields.customfield_10202.map((language) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
+		req.body.issue.fields.customfield_10015.map((language) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
 
 		const embed = new MessageEmbed()
 			.setTitle(`Project - ${req.body.issue.key}`)
@@ -113,13 +113,17 @@ router.post('/webhook', async (req, res) => {
 					value: `<@${user._id}>`,
 				});
 				msg.edit(embed);
+				client.users.fetch(user._id)
+					.then((fetchedUser) => {
+						fetchedUser.send('New assignment', { embed });
+					}).catch(console.error);
 			}
 		} else {
 			let languages = '';
 
-			// TODO: Replace language field id for prod
+			//* Language field for dev: customfield_10202
 			// eslint-disable-next-line no-return-assign
-			req.body.issue.fields.customfield_10202.map((language) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
+			req.body.issue.fields.customfield_10015.map((language) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
 
 			const embed = new MessageEmbed()
 				.setTitle(`Project - ${req.body.issue.key}`)
@@ -221,6 +225,10 @@ router.post('/webhook/artist', async (req, res) => {
 					value: `<@${user._id}>`,
 				});
 				msg.edit(embed);
+				client.users.fetch(user._id)
+					.then((fetchedUser) => {
+						fetchedUser.send('New assignment', { embed });
+					}).catch(console.error);
 			}
 		} else {
 			const embed = new MessageEmbed()
@@ -407,6 +415,7 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 					.then(() => {
 						msg.edit(embed);
 						msg.reactions.removeAll();
+						reactionUser.send('New assignment', { embed });
 					})
 					.catch((err) => {
 						messageReaction.users.remove(reactionUser);
@@ -466,6 +475,7 @@ exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
 					.then(() => {
 						msg.edit(embed);
 						msg.reactions.removeAll();
+						reactionUser.send('New assignment', { embed });
 					})
 					.catch((err) => {
 						messageReaction.users.remove(reactionUser);
