@@ -14,13 +14,15 @@ jobs:
 
       - name: Docker meta
         id: docker_meta
-        uses: crazy-max/ghaction-docker-meta@v1
+        uses: crazy-max/ghaction-docker-meta@v2
         with:
           images: ghcr.io/${{ github.repository }}
-          tag-sha: true
-          tag-custom: |
-            offloading-latest
-            offloading-dev
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=ref,event=pr
+            type=raw,value=offloading-dev
+            type=raw,value=offloading-latest
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
@@ -30,7 +32,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
-          password: ${{ secrets.CR_PAT }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Cache Docker layers
         uses: actions/cache@v2
