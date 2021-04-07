@@ -118,6 +118,8 @@ router.post('/webhook', async (req, res) => {
 						fetchedUser.send('New assignment', { embed });
 					}).catch(console.error);
 			}
+		} else if (req.body.transition && req.body.transition.transitionName === 'Finish') {
+			msg.delete();
 		} else {
 			let languages = '';
 
