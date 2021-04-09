@@ -71,12 +71,11 @@ router.post('/webhook', async (req, res) => {
 		});
 	} else {
 		const link = await IdLink.findOne({ jiraId: req.body.issue.id })
-			.lean()
 			.exec()
 			.catch((err) => {
 				throw new Error(err);
 			});
-		if (!link) return;
+		if (!link || link.finished) return;
 
 		const msg = await projectsChannel.messages.fetch(link.discordMessageId)
 			.catch((err) => {
@@ -120,6 +119,8 @@ router.post('/webhook', async (req, res) => {
 			}
 		} else if (req.body.transition && req.body.transition.transitionName === 'Finish') {
 			msg.delete();
+			link.finished = true;
+			link.save();
 		} else {
 			let languages = '';
 
