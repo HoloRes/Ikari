@@ -11,6 +11,7 @@ const GroupLink = require('./models/GroupLink');
 // Local files
 const config = require('./config.json');
 const { client } = require('./index');
+const { clipRequest } = require('./tools/clipper');
 
 // Variables
 const url = `${config.jira.url}/rest/api/latest`;
@@ -71,12 +72,11 @@ router.post('/webhook', async (req, res) => {
 		});
 	} else {
 		const link = await IdLink.findOne({ jiraId: req.body.issue.id })
-			.lean()
 			.exec()
 			.catch((err) => {
 				throw new Error(err);
 			});
-		if (!link) return;
+		if (!link || link.finished) return;
 
 		const msg = await projectsChannel.messages.fetch(link.discordMessageId)
 			.catch((err) => {
@@ -118,6 +118,12 @@ router.post('/webhook', async (req, res) => {
 						fetchedUser.send('New assignment', { embed });
 					}).catch(console.error);
 			}
+		} else if (req.body.transition && req.body.transition.transitionName === 'Finish') {
+			msg.delete();
+			link.finished = true;
+			link.save();
+		} else if (req.body.transition && req.body.transition.transitionName === 'Send to Ikari') {
+			clipRequest(['youtube', req.body.issue.fields.customfield_10200, req.issue.fields.customfield_10201, req.issue.fields.summary, 'mkv']);
 		} else {
 			let languages = '';
 
@@ -230,6 +236,12 @@ router.post('/webhook/artist', async (req, res) => {
 						fetchedUser.send('New assignment', { embed });
 					}).catch(console.error);
 			}
+		} else if (req.body.transition && req.body.transition.transitionName === 'Finish') {
+			msg.delete();
+			link.finished = true;
+			link.save();
+		} else if (req.body.transition && req.body.transition.transitionName === 'Send to Ikari') {
+			clipRequest(['youtube', req.body.issue.fields.customfield_10200, req.issue.fields.customfield_10201, req.issue.fields.summary, 'mkv']);
 		} else {
 			const embed = new MessageEmbed()
 				.setTitle(`Project - ${req.body.issue.key}`)
