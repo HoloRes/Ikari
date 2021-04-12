@@ -31,7 +31,7 @@ exports.client = client;
 
 // Express
 const app = express();
-app.listen();
+app.listen(config.port);
 
 // Init
 const jira = require('./jira');
