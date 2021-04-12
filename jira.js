@@ -127,7 +127,9 @@ router.post('/webhook', async (req, res) => {
 				.then((promise) => {
 					if (promise === true) {
 						axios.post(`${url}/issue/${link.jiraId}/transitions`, {
-							transition: 41,
+							transition: {
+								id: '41',
+							},
 						}, {
 							auth: {
 								username: config.jira.username,
@@ -140,7 +142,9 @@ router.post('/webhook', async (req, res) => {
 							});
 					} else {
 						axios.post(`${url}/issue/${link.jiraId}/transitions`, {
-							transition: 121,
+							transition: {
+								id: '121',
+							},
 						}, {
 							auth: {
 								username: config.jira.username,
