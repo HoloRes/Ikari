@@ -123,35 +123,36 @@ router.post('/webhook', async (req, res) => {
 			link.finished = true;
 			link.save();
 		} else if (req.body.transition && req.body.transition.transitionName === 'Send to Ikari') {
-			const ret = clipRequest(['youtube', req.body.issue.fields.customfield_10200, req.issue.fields.customfield_10201, req.issue.fields.summary, 'mkv']);
-
-			if (ret === true) {
-				axios.post(`${url}/issue/${link.jiraId}/transitions`, {
-					transition: 41,
-				}, {
-					auth: {
-						username: config.jira.username,
-						password: config.jira.password,
-					},
-				})
-					.catch((err) => {
-						console.log(err.response.data);
-						throw new Error(err);
-					});
-			} else {
-				axios.post(`${url}/issue/${link.jiraId}/transitions`, {
-					transition: 121,
-				}, {
-					auth: {
-						username: config.jira.username,
-						password: config.jira.password,
-					},
-				})
-					.catch((err) => {
-						console.log(err.response.data);
-						throw new Error(err);
-					});
-			}
+			clipRequest(['youtube', req.body.issue.fields.customfield_10200, req.issue.fields.customfield_10201, req.issue.fields.summary, 'mkv'])
+				.then((promise) => {
+					if (promise === true) {
+						axios.post(`${url}/issue/${link.jiraId}/transitions`, {
+							transition: 41,
+						}, {
+							auth: {
+								username: config.jira.username,
+								password: config.jira.password,
+							},
+						})
+							.catch((err) => {
+								console.log(err.response.data);
+								throw new Error(err);
+							});
+					} else {
+						axios.post(`${url}/issue/${link.jiraId}/transitions`, {
+							transition: 121,
+						}, {
+							auth: {
+								username: config.jira.username,
+								password: config.jira.password,
+							},
+						})
+							.catch((err) => {
+								console.log(err.response.data);
+								throw new Error(err);
+							});
+					}
+				});
 		} else {
 			let languages = '';
 
