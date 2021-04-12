@@ -3,10 +3,10 @@
         "prefix": "",
         "authToken": ""
     },
-    "webdav":{
-        "webdavHost": "",
-        "webdavUsername": "",
-        "webdavPassword": ""
+    "webdav": {
+        "url": "",
+        "username": "",
+        "password": ""
     },
     "mongodb": {
         "host": "",

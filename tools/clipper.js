@@ -11,10 +11,10 @@ const config = require('../config.json');
 const idRegex = /(\?v=|be\/).{11}/g;
 
 const webdavClient = createClient(
-	config.webdavHost,
+	config.webdav.url,
 	{
-		username: config.webdavUsername,
-		password: config.webdavPassword,
+		username: config.webdav.username,
+		password: config.webdav.password,
 		maxBodyLength: 100000000,
 		maxContentLength: 100000000,
 	},
