@@ -35,12 +35,12 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 	// This OS check is for development purposes only; will be removed in the future
 	if (os.platform() === 'win32') {
 		const cmd = `./clipper.ps1 -videotype ${videoType} -inlink ${videoLink} -timestampsIn "${timestamps}" -dlDir "../download/" -fulltitle ${internalId} -fileOutExt ${fileExt}`;
-		exec(cmd, { shell: 'powershell.exe' }, async (error, stdout) => {
+		const res = exec(cmd, { shell: 'powershell.exe' }, async (error, stdout) => {
 			console.log(stdout);
 			console.log(error);
 			if (error !== null) {
 				console.log(error);
-				return 2;
+				return 1;
 			}
 			const stream = fs.createReadStream(`./download/${internalId}.${fileExt}`);
 			const result = await webdavClient.putFileContents(`/TL Team/Projects/Test/${projectName.replace(/\s+/g, '')}.${fileExt}`, stream);
@@ -52,14 +52,15 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 			});
 			return 0;
 		});
+		if (res !== 0) return false;
 	} else {
 		const cmd = `pwsh ./clipper.ps1 -videotype ${videoType} -inlink ${videoLink} -timestampsIn "${timestamps}" -dlDir "../download/" -fulltitle ${internalId} -fileOutExt ${fileExt}`;
-		exec(cmd, async (error, stdout) => {
+		const res = exec(cmd, async (error, stdout) => {
 			console.log(stdout);
 			console.log(error);
 			if (error !== null) {
 				console.log(error);
-				return 2;
+				return 1;
 			}
 			const stream = fs.createReadStream(`./download/${internalId}.${fileExt}`);
 			const result = await webdavClient.putFileContents(`/TL Team/Projects/Test/${projectName.replace(/\s+/g, '')}.${fileExt}`, stream);
@@ -71,6 +72,8 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 			});
 			return 0;
 		});
+		if (res !== 0) return false;
 	}
+	return true;
 }
 exports.clipRequest = clipRequest;

@@ -3,9 +3,10 @@
         "prefix": "",
         "authToken": ""
     },
-    "socket.io": {
-        "port": 3000,
-        "authToken": ""
+    "webdav":{
+        "webdavHost": "",
+        "webdavUsername": "",
+        "webdavPassword": ""
     },
     "mongodb": {
         "host": "",

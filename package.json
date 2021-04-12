@@ -22,7 +22,6 @@
     "express": "^4.17.1",
     "mongoose": "^5.11.18",
     "nanoid": "^3.1.20",
-    "socket.io": "^3.1.2",
     "webdav": "^4.3.0"
   },
   "devDependencies": {

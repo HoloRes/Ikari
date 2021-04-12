@@ -1,6 +1,5 @@
 // Imports
 const Discord = require('discord.js');
-const { Server: SocketIO } = require('socket.io');
 const mongoose = require('mongoose');
 const express = require('express');
 
@@ -32,22 +31,6 @@ exports.client = client;
 
 // Express
 const app = express();
-const server = app.listen(config['socket.io'].port);
-
-// Socket.IO (Depreciated)
-// TODO: Remove
-const io = new SocketIO(server, { serveClient: false });
-io.use((socket, next) => {
-	if (socket.handshake.auth && socket.handshake.auth.token === config['socket.io'].authToken) {
-		next();
-	} else {
-		next(new Error('Socket.io Auth Error'));
-	}
-})
-	.on('connection', (socket) => {
-		console.log(`Connected to ${socket.id}`);
-	});
-exports.io = io;
 
 // Init
 const jira = require('./jira');
