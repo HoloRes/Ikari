@@ -88,7 +88,7 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 		if (res !== 0) return false;
 	} else {
 		// console.log(videoLink); // Debug
-		 const proc = await spawn('pwsh', ['./tools/clipper.ps1', '-videotype', videoType, '-inlink', videoLink, '-timestampsIn', timestamps, '-dlDir', './download/', '-fulltitle', internalId, '-fileOUtExt', fileExt], {
+		const proc = await spawn('pwsh', ['./tools/clipper.ps1', '-videotype', videoType, '-inlink', videoLink, '-timestampsIn', timestamps, '-dlDir', './download/', '-fulltitle', internalId, '-fileOUtExt', fileExt], {
 			cwd: path.join(__dirname, '../'),
 		});
 		// const proc = await spawn('echo'); // Debug to skip dl
@@ -131,5 +131,6 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 			return true;
 		});
 	}
+	return true;
 }
 exports.clipRequest = clipRequest;
