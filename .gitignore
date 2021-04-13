@@ -108,3 +108,5 @@ dist
 
 # Config files
 config.json
+
+download/
