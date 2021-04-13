@@ -28,7 +28,7 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 	const internalId = `${videoLink.match(idRegex)[0].substring(3)}_${nanoid()}`;
 	let doNotStitch = false;
 	let rescaleVideo = false;
-	if (extraArgs.length > 0) {
+	if (extraArgs && extraArgs.length > 0) {
 		if (extraArgs[0].value === 'Do Not Stitch Clips' || (extraArgs[1] && extraArgs[1].value === 'Do Not Stitch Clips')) {
 			doNotStitch = true;
 		}
