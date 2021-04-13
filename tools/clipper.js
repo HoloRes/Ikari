@@ -60,7 +60,7 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 
 				zipFile.on('close', async () => {
 					const stream = fs.createReadStream('./download/clips.zip');
-					const result = await webdavClient.putFileContents('/TL Team/Projects/Test/clips.zip', stream);
+					const result = await webdavClient.putFileContents(`/TL Team/Projects/${projectName}/clips.zip`, stream);
 					if (result === false) {
 						return 1;
 					}
@@ -74,7 +74,7 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 				archive.finalize();
 			} else {
 				const stream = fs.createReadStream(`./download/${internalId}.${fileExt}`);
-				const result = await webdavClient.putFileContents(`/TL Team/Projects/Test/${projectName.replace(/\s+/g, '')}.${fileExt}`, stream);
+				const result = await webdavClient.putFileContents(`/TL Team/Projects/${projectName}/${projectName.replace(/\s+/g, '')}.${fileExt}`, stream);
 				if (result === false) {
 					return 1;
 				}
@@ -102,7 +102,7 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 
 				zipFile.on('close', async () => {
 					const stream = fs.createReadStream('./download/clips.zip');
-					const result = await webdavClient.putFileContents('/TL Team/Projects/Test/clips.zip', stream);
+					const result = await webdavClient.putFileContents(`/TL Team/Projects/${projectName}/clips.zip`, stream);
 					if (result === false) {
 						return 1;
 					}
@@ -116,7 +116,7 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 				archive.finalize();
 			} else {
 				const stream = fs.createReadStream(`./download/${internalId}.${fileExt}`);
-				const result = await webdavClient.putFileContents(`/TL Team/Projects/Test/${projectName.replace(/\s+/g, '')}.${fileExt}`, stream);
+				const result = await webdavClient.putFileContents(`/TL Team/Projects/${projectName}/${projectName.replace(/\s+/g, '')}.${fileExt}`, stream);
 				if (result === false) {
 					return 1;
 				}
