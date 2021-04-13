@@ -22,6 +22,7 @@ const webdavClient = createClient(
 	},
 );
 
+// eslint-disable-next-line consistent-return
 async function clipRequest([videoType, videoLink, timestamps, projectName, fileExt, extraArgs]) {
 	if (!fs.existsSync('./download')) {
 		fs.mkdirSync('./download');
@@ -119,7 +120,6 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 				archive.directory('./download/', false);
 				archive.finalize();
 			} else {
-				// TODO: Replace with internal id and properextension
 				const stream = fs.readFileSync(`./download/${internalId}.${fileExt}`);
 				const result = await webdavClient.putFileContents(`/TL Team/Projects/${projectName}/${projectName.replace(/\s+/g, '')}.${fileExt}`, stream);
 				if (result === false) {
@@ -129,6 +129,5 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 			return true;
 		});
 	}
-	return true;
 }
 exports.clipRequest = clipRequest;
