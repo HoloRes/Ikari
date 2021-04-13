@@ -125,6 +125,7 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 				const stream = fs.createReadStream('./download/HZmPB0f3cbI_Ylo3-uQQpkXPexehbDdvr.mkv');
 				const result = await webdavClient.putFileContents(`/TL Team/Projects/${projectName}/${projectName.replace(/\s+/g, '')}.${fileExt}`, stream);
 				if (result === false) {
+					console.log('FALSE');
 					return 1;
 				}
 			}
