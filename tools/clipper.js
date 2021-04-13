@@ -5,6 +5,7 @@ const os = require('os');
 const archiver = require('archiver');
 const { createClient } = require('webdav');
 const fs = require('fs');
+const path = require('path');
 
 // Local files
 const config = require('../config.json');
@@ -44,8 +45,8 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 	}
 	// This OS check is for development purposes only; will be removed in the future
 	if (os.platform() === 'win32') {
-		const cmd = `./clipper.ps1 -videotype ${videoType} -inlink ${videoLink} -timestampsIn "${timestamps}" -dlDir "./download/" -fulltitle ${internalId} -fileOutExt ${fileExt}`;
-		const res = exec(cmd, { shell: 'powershell.exe' }, async (error, stdout) => {
+		const cmd = `./tools/clipper.ps1 -videotype ${videoType} -inlink ${videoLink} -timestampsIn "${timestamps}" -dlDir "./download/" -fulltitle ${internalId} -fileOutExt ${fileExt}`;
+		const res = exec(cmd, { shell: 'powershell.exe', cwd: path.join(__dirname, '../') }, async (error, stdout) => {
 			console.log(stdout);
 			console.log(error);
 			if (error !== null) {
@@ -86,8 +87,8 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 		});
 		if (res !== 0) return false;
 	} else {
-		const cmd = `pwsh ./clipper.ps1 -videotype ${videoType} -inlink ${videoLink} -timestampsIn "${timestamps}" -dlDir "./download/" -fulltitle ${internalId} -fileOutExt ${fileExt}`;
-		const res = exec(cmd, async (error, stdout) => {
+		const cmd = `pwsh ./tools/clipper.ps1 -videotype ${videoType} -inlink ${videoLink} -timestampsIn "${timestamps}" -dlDir "./download/" -fulltitle ${internalId} -fileOutExt ${fileExt}`;
+		const res = exec(cmd, { cwd: path.join(__dirname, '../') }, async (error, stdout) => {
 			console.log(stdout);
 			console.log(error);
 			if (error !== null) {
