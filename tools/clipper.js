@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 const { nanoid } = require('nanoid');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const os = require('os');
 const archiver = require('archiver');
 const { createClient } = require('webdav');
@@ -87,14 +87,22 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 		});
 		if (res !== 0) return false;
 	} else {
-		const cmd = `pwsh ./tools/clipper.ps1 -videotype ${videoType} -inlink ${videoLink} -timestampsIn "${timestamps}" -dlDir "./download/" -fulltitle ${internalId} -fileOutExt ${fileExt}`;
-		const res = exec(cmd, { cwd: path.join(__dirname, '../') }, async (error, stdout) => {
-			console.log(stdout);
-			console.log(error);
-			if (error !== null) {
-				console.log(error);
-				return 1;
-			}
+		// console.log(videoLink); // Debug
+		 const proc = await spawn('pwsh', ['./tools/clipper.ps1', '-videotype', videoType, '-inlink', videoLink, '-timestampsIn', timestamps, '-dlDir', './download/', '-fulltitle', internalId, '-fileOUtExt', fileExt], {
+			cwd: path.join(__dirname, '../'),
+		});
+		// const proc = await spawn('echo'); // Debug to skip dl
+
+		proc.stderr.on('data', (data) => {
+			console.error(data.toString());
+		});
+
+		proc.stdout.on('data', (data) => {
+			console.log(data.toString());
+		});
+
+		proc.on('exit', async (code) => {
+			if (code === 1) return false;
 			if (doNotStitch === true) {
 				const zipFile = fs.createWriteStream('./download/clips.zip');
 				const archive = archiver('zip', {
@@ -107,28 +115,21 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 					if (result === false) {
 						return 1;
 					}
-					fs.unlink(`./download/${internalId}.${fileExt}`, (err) => {
-						if (err) console.log(err);
-					});
 					return 0;
 				});
 				archive.pipe(zipFile);
 				archive.directory('./download/', false);
 				archive.finalize();
 			} else {
-				const stream = fs.createReadStream(`./download/${internalId}.${fileExt}`);
+				// TODO: Replace with internal id and properextension
+				const stream = fs.createReadStream('./download/HZmPB0f3cbI_Ylo3-uQQpkXPexehbDdvr.mkv');
 				const result = await webdavClient.putFileContents(`/TL Team/Projects/${projectName}/${projectName.replace(/\s+/g, '')}.${fileExt}`, stream);
 				if (result === false) {
 					return 1;
 				}
-				fs.unlink(`./download/${internalId}.${fileExt}`, (err) => {
-					if (err) console.log(err);
-				});
 			}
-			return 0;
+			return true;
 		});
-		if (res !== 0) return false;
 	}
-	return true;
 }
 exports.clipRequest = clipRequest;
