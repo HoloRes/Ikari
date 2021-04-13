@@ -124,11 +124,8 @@ router.post('/webhook', async (req, res) => {
 			link.save();
 		} else if (req.body.transition && req.body.transition.transitionName === 'Send to Ikari') {
 			const videoRegex = /^(http(s)?:\/\/)?(www\.)?youtu((\.be\/)|(be\.com\/watch\?v=))[0-z]{11}$/g;
-			let videoType = 'youtube';
-			if (req.body.issue.fields.customfield_10200.match(videoRegex) === null) {
-				videoType = 'other';
-			}
-			clipRequest([videoType, req.body.issue.fields.customfield_10200, req.body.issue.fields.customfield_10201, req.body.issue.fields.summary, 'mkv', req.body])
+			const videoType = videoRegex.test(req.body.issue.fields.customfield_10200) ? 'youtube' : 'other';
+			clipRequest([videoType, req.body.issue.fields.customfield_10200, req.body.issue.fields.customfield_10201, req.body.issue.fields.summary, 'mkv', req.body.issue.customfield_10205])
 				.then((promise) => {
 					if (promise === true) {
 						axios.post(`${url}/issue/${link.jiraId}/transitions`, {

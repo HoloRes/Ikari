@@ -55,9 +55,12 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 				const archive = archiver('zip', {
 					zlib: { level: 9 },
 				});
+
+				zipFile.on('close', () => {
+					archive.finalize();
+				});
 				archive.pipe(zipFile);
 				archive.directory('../download/', false);
-				archive.finalize();
 				const stream = fs.createReadStream('../download/clips.zip');
 				const result = await webdavClient.putFileContents('/TL Team/Projects/Test/clips.zip', stream);
 				if (result === false) {
