@@ -36,7 +36,7 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 			rescaleVideo = true;
 		}
 	}
-
+	console.log(`(DEBUG) Project File URL: /TL Team/Projects/${projectName}/`);
 	console.log(`Recieved Clipping Request ${internalId}, Is Multifile Clip: ${doNotStitch}, Is Rescaled: ${rescaleVideo}`);
 	if (await webdavClient.exists(`/TL Team/Projects/${projectName}/`) === false) {
 		// TODO: set up project directory with necessary documents via WebDAV
