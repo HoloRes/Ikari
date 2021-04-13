@@ -123,7 +123,7 @@ router.post('/webhook', async (req, res) => {
 			link.finished = true;
 			link.save();
 		} else if (req.body.transition && req.body.transition.transitionName === 'Send to Ikari') {
-			clipRequest(['youtube', req.body.issue.fields.customfield_10200, req.body.issue.fields.customfield_10201, req.issue.fields.summary, 'mkv'])
+			clipRequest(['youtube', req.body.issue.fields.customfield_10200, req.body.issue.fields.customfield_10201, req.body.issue.fields.summary, 'mkv', req.body])
 				.then((promise) => {
 					if (promise === true) {
 						axios.post(`${url}/issue/${link.jiraId}/transitions`, {

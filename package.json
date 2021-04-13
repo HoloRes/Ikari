@@ -17,6 +17,7 @@
   },
   "homepage": "https://github.com/HoloRes/Ikari#readme",
   "dependencies": {
+    "archiver": "^5.3.0",
     "axios": "^0.21.1",
     "discord.js": "^12.5.1",
     "express": "^4.17.1",
