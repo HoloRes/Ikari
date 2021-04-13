@@ -28,11 +28,13 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 	const internalId = `${videoLink.match(idRegex)[0].substring(3)}_${nanoid()}`;
 	let doNotStitch = false;
 	let rescaleVideo = false;
-	if (extraArgs[0].value === 'Do Not Stitch Clips' || extraArgs[1].value === 'Do Not Stitch Clips') {
-		doNotStitch = true;
-	}
-	if (extraArgs[0].value === 'Rescale Video' || extraArgs[1].value === 'Rescale Video') {
-		rescaleVideo = true;
+	if (extraArgs.length > 0) {
+		if (extraArgs[0].value === 'Do Not Stitch Clips' || (extraArgs[1] && extraArgs[1].value === 'Do Not Stitch Clips')) {
+			doNotStitch = true;
+		}
+		if (extraArgs[0].value === 'Rescale Video' || (extraArgs[1] && extraArgs[1].value === 'Rescale Video')) {
+			rescaleVideo = true;
+		}
 	}
 
 	console.log(`Recieved Clipping Request ${internalId}, Is Multifile Clip: ${doNotStitch}, Is Rescaled: ${rescaleVideo}`);
@@ -56,19 +58,20 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 					zlib: { level: 9 },
 				});
 
-				zipFile.on('close', () => {
-					archive.finalize();
+				zipFile.on('close', async () => {
+					const stream = fs.createReadStream('../download/clips.zip');
+					const result = await webdavClient.putFileContents('/TL Team/Projects/Test/clips.zip', stream);
+					if (result === false) {
+						return 1;
+					}
+					fs.unlink(`./download/${internalId}.${fileExt}`, (err) => {
+						if (err) console.log(err);
+					});
+					return 0;
 				});
 				archive.pipe(zipFile);
 				archive.directory('../download/', false);
-				const stream = fs.createReadStream('../download/clips.zip');
-				const result = await webdavClient.putFileContents('/TL Team/Projects/Test/clips.zip', stream);
-				if (result === false) {
-					return 1;
-				}
-				fs.unlink(`./download/${internalId}.${fileExt}`, (err) => {
-					if (err) console.log(err);
-				});
+				archive.finalize();
 			} else {
 				const stream = fs.createReadStream(`../download/${internalId}.${fileExt}`);
 				const result = await webdavClient.putFileContents(`/TL Team/Projects/Test/${projectName.replace(/\s+/g, '')}.${fileExt}`, stream);
@@ -96,17 +99,21 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 				const archive = archiver('zip', {
 					zlib: { level: 9 },
 				});
+
+				zipFile.on('close', async () => {
+					const stream = fs.createReadStream('../download/clips.zip');
+					const result = await webdavClient.putFileContents('/TL Team/Projects/Test/clips.zip', stream);
+					if (result === false) {
+						return 1;
+					}
+					fs.unlink(`./download/${internalId}.${fileExt}`, (err) => {
+						if (err) console.log(err);
+					});
+					return 0;
+				});
 				archive.pipe(zipFile);
 				archive.directory('../download/', false);
 				archive.finalize();
-				const stream = fs.createReadStream('../download/clips.zip');
-				const result = await webdavClient.putFileContents('/TL Team/Projects/Test/clips.zip', stream);
-				if (result === false) {
-					return 1;
-				}
-				fs.unlink(`./download/${internalId}.${fileExt}`, (err) => {
-					if (err) console.log(err);
-				});
 			} else {
 				const stream = fs.createReadStream(`../download/${internalId}.${fileExt}`);
 				const result = await webdavClient.putFileContents(`/TL Team/Projects/Test/${projectName.replace(/\s+/g, '')}.${fileExt}`, stream);
