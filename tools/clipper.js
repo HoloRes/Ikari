@@ -111,6 +111,7 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 				zipFile.on('close', async () => {
 					const stream = fs.createReadStream('./download/clips.zip');
 					const result = await webdavClient.putFileContents(`/TL Team/Projects/${projectName}/clips.zip`, stream);
+					// TODO: Remove all clips
 					if (result === false) {
 						return 1;
 					}
@@ -118,10 +119,15 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 				});
 				archive.pipe(zipFile);
 				archive.directory('./download/', false);
+				// eslint-disable-next-line max-len
+				// TODO: Above could break when accidentally having left over files or having simultaneous downloads
 				archive.finalize();
 			} else {
 				const stream = fs.readFileSync(`./download/${internalId}.${fileExt}`);
 				const result = await webdavClient.putFileContents(`/TL Team/Projects/${projectName}/${projectName.replace(/\s+/g, '')}.${fileExt}`, stream);
+				fs.unlink(`./download/${internalId}.${fileExt}`, (err) => {
+					if (err) console.log(err);
+				});
 				if (result === false) {
 					return false;
 				}
