@@ -1,6 +1,6 @@
 # Written and Tested by Sheer Curiosity
 
-# HoloClipper Revision 6 Version 1
+# HoloClipper Revision 6 Version 2
 
 # REQUIRED BINARIES (BOTH MUST BE ADDED TO PATH)
 # -ffmpeg
@@ -14,9 +14,11 @@ param (
     [string]$inlink = $null, # Defines input link                                    Options: YouTube Links and Direct Video File Links
     [string]$dlDir = ".", # Defines the download directory for the final file     Options: Any Directory On Your PC
     [string]$timestampsIn = $null, # Defines the timestamps to be clipped                  Options: Timestamps In This Format (Add Comma, No Space For Multiple Subclips): [xx:xx:xx-xx:xx:xx],[xx:xx:xx-xx:xx:xx]
+    [string]$miniclipFileExt = "mkv",
     [string]$fileOutExt = "mkv", # Defines the output file extension                     Options: Any Video Extensions Supported By FFMPEG
     [string]$rescaleVideo = "false", # True/False rescale video to 1080p                     Options: True, False
-    [string]$doNotStitch = "false"
+    [string]$doNotStitch = "false",
+    [string]$isIkari = "true"
 )
 
 # Define directory for temporary files
@@ -27,6 +29,13 @@ Get-RSJob | Remove-RSJob
 if (!$videotype -or !$inlink -or !$timestampsIn) {
     Throw "ERROR: Missing Parameters"
 }
+
+if ($isIkari.toLower() = "true") {
+    if (!(Test-Path -Path $tempdir)) {
+        mkdir $tempdir
+    }
+}
+
 # Define "parser" function, which parses the input timestamps into a format
 # the script can work with
 function parserCheck($clipstamps) {
@@ -298,8 +307,9 @@ $clipper = {
                     $glink2 = $args[4]
                     $tempdir = $args[5]
                     $clipnumout = $args[6]
-                    ffmpeg -y -ss $clipsSps[$clipnum] -i ($glink1) -t $clipsRt[$clipnum] -ss $clipsSps[$clipnum] -i ($glink2) -t $clipsRt[$clipnum] -crf 18 "$tempdir/clip$clipnumout.mkv"
-                } -ArgumentList $clipsSps, $clipsRt, $clipnum, $glink1, $glink2, $tempdir, $clipnumout
+                    $miniclipFileExt = $args[7]
+                    ffmpeg -y -ss $clipsSps[$clipnum] -i ($glink1) -t $clipsRt[$clipnum] -ss $clipsSps[$clipnum] -i ($glink2) -t $clipsRt[$clipnum] -crf 18 "$tempdir/clip$clipnumout.$miniclipFileExt"
+                } -ArgumentList $clipsSps, $clipsRt, $clipnum, $glink1, $glink2, $tempdir, $clipnumout, $miniclipFileExt
             }
         }
         if ($videotype.toLower() -eq "other") {
@@ -309,7 +319,7 @@ $clipper = {
                     Write-output "Clipping Complete"
                 }
                 else {
-                    Write-output "Clipping Unsuccessful"
+                    Write-output "Clipping Failed"
                 }
             }
             if ($miniclipnum -ge 2) {
@@ -320,8 +330,9 @@ $clipper = {
                     $glink = $args[3]
                     $tempdir = $args[4]
                     $clipnumout = $args[5]
-                    ffmpeg -y -ss $clipsSps[$clipnum] -i ($glink) -t $clipsRt[$clipnum] -crf 18 "$tempdir/clip$clipnumout.mkv"
-                } -ArgumentList $clipsSps, $clipsRt, $clipnum, $glink, $tempdir, $clipnumout
+                    $miniclipFileExt = $args[6]
+                    ffmpeg -y -ss $clipsSps[$clipnum] -i ($glink) -t $clipsRt[$clipnum] -crf 18 "$tempdir/clip$clipnumout.$miniclipFileExt"
+                } -ArgumentList $clipsSps, $clipsRt, $clipnum, $glink, $tempdir, $clipnumout, $miniclipFileExt
             }
         }
         $clipnum ++
@@ -344,14 +355,14 @@ $clipper = {
                 }
             }
             if ($miniclipnum -ge 2) {
-                if ((Test-Path("$tempdir/clip$clipnumout.mkv")) -eq $true) {
+                if ((Test-Path("$tempdir/clip$clipnumout.$miniclipFileExt")) -eq $true) {
                     $valid = 0
-                    $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/clip$clipnumout.mkv`" "
+                    $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/clip$clipnumout.$miniclipFileExt`" "
                     $stitchCmdMapInputs = $stitchCmdMapInputs + "[$mapperNum`:v:0][$mapperNum`:a:0]"
                     $stitchCmdMapInputsCount ++
                     if ($validator1 -gt 1) {
                         $mapperNum ++
-                        $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/blackscreen.mkv`" "
+                        $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/blackscreen.$miniclipFileExt`" "
                         $stitchCmdMapInputs = $stitchCmdMapInputs + "[$mapperNum`:v:0][$mapperNum`:a:0]"
                         $stitchCmdMapInputsCount ++
                     }
@@ -365,19 +376,20 @@ $clipper = {
                         $glinkBACK2 = $args[4]
                         $tempdir = $args[5]
                         $clipnumout = $args[6]
-                        ffmpeg -y -ss $clipsSps[$clipnum] -i ($glinkBACK1) -t $clipsRt[$clipnum] -ss $clipsSps[$clipnum] -i ($glinkBACK2) -t $clipsRt[$clipnum] -crf 18 "$tempdir/clip$clipnumout.mkv"
-                    } -ArgumentList $clipsSps, $clipsRt, $clipnum, $glink1, $glink2, $tempdir, $clipnumout
+                        $miniclipFileExt = $args[7]
+                        ffmpeg -y -ss $clipsSps[$clipnum] -i ($glinkBACK1) -t $clipsRt[$clipnum] -ss $clipsSps[$clipnum] -i ($glinkBACK2) -t $clipsRt[$clipnum] -crf 18 "$tempdir/clip$clipnumout.$miniclipFileExt"
+                    } -ArgumentList $clipsSps, $clipsRt, $clipnum, $glink1, $glink2, $tempdir, $clipnumout, $miniclipFileExt
                 }
             }
         }
         if ($videotype.toLower() -eq "other") {
             $valid = 0
-            $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/clip$clipnumout.mkv`" "
+            $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/clip$clipnumout.$miniclipFileExt`" "
             $stitchCmdMapInputs = $stitchCmdMapInputs + "[$mapperNum`:v:0][$mapperNum`:a:0]"
             $stitchCmdMapInputsCount ++
             if ($validator1 -gt 1) {
                 $mapperNum ++
-                $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/blackscreen.mkv`" "
+                $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/blackscreen.$miniclipFileExt`" "
                 $stitchCmdMapInputs = $stitchCmdMapInputs + "[$mapperNum`:v:0][$mapperNum`:a:0]"
                 $stitchCmdMapInputsCount ++
             }
@@ -402,13 +414,13 @@ $clipper = {
                     }
                 }
                 if ($miniclipnum -ge 2) {
-                    if ((Test-Path("$tempdir/clip$clipnumout.mkv")) -eq $true) {
-                        $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/clip$clipnumout.mkv`" "
+                    if ((Test-Path("$tempdir/clip$clipnumout.$miniclipFileExt")) -eq $true) {
+                        $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/clip$clipnumout.$miniclipFileExt`" "
                         $stitchCmdMapInputs = $stitchCmdMapInputs + "[$mapperNum`:v:0][$mapperNum`:a:0]"
                         $stitchCmdMapInputsCount ++
                         if ($validator2 -gt 1) {
                             $mapperNum ++
-                            $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/blackscreen.mkv`" "
+                            $stitchCmdInputs = $stitchCmdInputs + "-i `"$tempdir/blackscreen.$miniclipFileExt`" "
                             $stitchCmdMapInputs = $stitchCmdMapInputs + "[$mapperNum`:v:0][$mapperNum`:a:0]"
                             $stitchCmdMapInputsCount ++
                         }
@@ -431,12 +443,12 @@ $clipper = {
         }
         else {
             $stitchCmdMapInputs = $stitchCmdMapInputs + "concat=n=$stitchCmdMapInputsCount`:v=1:a=1[outv][outa]"
-            $clipresolution = ffprobe -v error -select_streams v:0 -show_entries stream=width, height -of csv=s=x:p=0 "$tempdir/clip1.mkv"
-            $clipbitrate = ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of csv=s=x:p=0 "$tempdir/clip1.mkv"
-            $clipframerate = ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of csv=s=x:p=0 "$tempdir/clip1.mkv"
+            $clipresolution = ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 "$tempdir/clip1.$miniclipFileExt"
+            $clipbitrate = ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of csv=s=x:p=0 "$tempdir/clip1.$miniclipFileExt"
+            $clipframerate = ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of csv=s=x:p=0 "$tempdir/clip1.$miniclipFileExt"
             $clipframerate = Invoke-Expression $clipframerate
             $stitchCmd = "ffmpeg -y $stitchCmdInputs -crf 18 -filter_complex `"$stitchCmdMapInputs`" -map `"[outv]`" -map `"[outa]`" -x264-params keyint=$clipframerate`:scenecut=0 `"$dlDir/output.$fileOutExt`""
-            ffmpeg -y -f lavfi -i color=black:s="$clipresolution":r=$clipframerate -f lavfi -i anullsrc -ar $clipbitrate -ac 2 -t 3 "$tempdir/blackscreen.mkv"
+            ffmpeg -y -f lavfi -i color=black:s="$clipresolution":r=$clipframerate -f lavfi -i anullsrc -ar $clipbitrate -ac 2 -t 3 "$tempdir/blackscreen.$miniclipFileExt"
             Invoke-Expression $stitchCmd
             if ($rescaleVideo.ToLower() -eq "true") {
                 ffmpeg -i "$dlDir/output.$fileOutExt" -vf scale=1920x1080:flags=bicubic -x264-params keyint=$clipframerate`:scenecut=0 "$dlDir/outputSCALED.$fileOutExt"
@@ -450,14 +462,14 @@ $clipper = {
                 Write-output "Clipping Complete"
             }
             else {
-                Write-output "Clipping Unsuccessful"
+                Write-output "Clipping Failed"
             }
             $parsernum = $miniclipnum
             $clipnumout = 1
-            remove-item "$tempdir/blackscreen.mkv"
+            remove-item "$tempdir/blackscreen.$miniclipFileExt"
             Get-RSJob | Remove-RSJob
             while ($parserNum -gt 0) {
-                remove-Item -path "$tempdir/clip$clipnumout.mkv"
+                remove-Item -path "$tempdir/clip$clipnumout.$miniclipFileExt"
                 $clipnumout ++
                 $parserNum --
             }   

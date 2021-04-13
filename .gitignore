@@ -110,3 +110,4 @@ dist
 config.json
 
 download/
+temp/

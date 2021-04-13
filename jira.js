@@ -48,9 +48,9 @@ router.post('/webhook', async (req, res) => {
 
 		let languages = '';
 
-		//* Language field for dev: customfield_10202
+		//* Language field for dev: customfield_10202, prod: customfield_10015
 		// eslint-disable-next-line no-return-assign
-		req.body.issue.fields.customfield_10015.map((language) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
+		req.body.issue.fields.customfield_10202.map((language) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
 
 		const embed = new MessageEmbed()
 			.setTitle(`Project - ${req.body.issue.key}`)
@@ -123,48 +123,58 @@ router.post('/webhook', async (req, res) => {
 			link.finished = true;
 			link.save();
 		} else if (req.body.transition && req.body.transition.transitionName === 'Send to Ikari') {
+			console.log(req.body.issue.fields.customfield_10300.value.toLowerCase());
 			const videoRegex = /^(http(s)?:\/\/)?(www\.)?youtu((\.be\/)|(be\.com\/watch\?v=))[0-z]{11}$/g;
 			const videoType = videoRegex.test(req.body.issue.fields.customfield_10200) ? 'youtube' : 'other';
-			clipRequest([videoType, req.body.issue.fields.customfield_10200, req.body.issue.fields.customfield_10201, req.body.issue.fields.summary, 'mkv', req.body.issue.customfield_10205])
-				.then((promise) => {
-					if (promise === true) {
-						axios.post(`${url}/issue/${link.jiraId}/transitions`, {
-							transition: {
-								id: '41',
-							},
-						}, {
-							auth: {
-								username: config.jira.username,
-								password: config.jira.password,
-							},
-						})
-							.catch((err) => {
-								console.log(err.response.data);
-								throw new Error(err);
-							});
-					} else {
-						axios.post(`${url}/issue/${link.jiraId}/transitions`, {
-							transition: {
-								id: '121',
-							},
-						}, {
-							auth: {
-								username: config.jira.username,
-								password: config.jira.password,
-							},
-						})
-							.catch((err) => {
-								console.log(err.response.data);
-								throw new Error(err);
-							});
-					}
+			clipRequest([
+				videoType,
+				req.body.issue.fields.customfield_10200,
+				req.body.issue.fields.customfield_10201,
+				req.body.issue.fields.summary,
+				req.body.issue.fields.customfield_10300.value.toLowerCase(),
+				req.body.issue.fields.customfield_10205,
+			])
+				.then(() => {
+					axios.post(`${url}/issue/${link.jiraId}/transitions`, {
+						transition: {
+							id: '41',
+						},
+					}, {
+						auth: {
+							username: config.jira.username,
+							password: config.jira.password,
+						},
+					})
+						.catch((err) => {
+							console.log(err.response.data);
+							throw new Error(err);
+						});
+				}, () => {
+					axios.post(`${url}/issue/${link.jiraId}/transitions`, {
+						transition: {
+							id: '121',
+						},
+					}, {
+						auth: {
+							username: config.jira.username,
+							password: config.jira.password,
+						},
+					})
+						.catch((err) => {
+							console.log(err.response.data);
+							throw new Error(err);
+						});
+				})
+				.catch((err) => {
+					console.log(err.response.data);
+					throw new Error(err);
 				});
 		} else {
 			let languages = '';
 
 			//* Language field for dev: customfield_10202
 			// eslint-disable-next-line no-return-assign
-			req.body.issue.fields.customfield_10015.map((language) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
+			req.body.issue.fields.customfield_10202.map((language) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
 
 			const embed = new MessageEmbed()
 				.setTitle(`Project - ${req.body.issue.key}`)
