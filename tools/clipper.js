@@ -22,8 +22,8 @@ const webdavClient = createClient(
 );
 
 async function clipRequest([videoType, videoLink, timestamps, projectName, fileExt, extraArgs]) {
-	if (!fs.existsSync('../download')) {
-		fs.mkdirSync('../download');
+	if (!fs.existsSync('./download')) {
+		fs.mkdirSync('./download');
 	}
 	const internalId = `${videoLink.match(idRegex)[0].substring(3)}_${nanoid()}`;
 	let doNotStitch = false;
@@ -44,7 +44,7 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 	}
 	// This OS check is for development purposes only; will be removed in the future
 	if (os.platform() === 'win32') {
-		const cmd = `./clipper.ps1 -videotype ${videoType} -inlink ${videoLink} -timestampsIn "${timestamps}" -dlDir "../download/" -fulltitle ${internalId} -fileOutExt ${fileExt}`;
+		const cmd = `./clipper.ps1 -videotype ${videoType} -inlink ${videoLink} -timestampsIn "${timestamps}" -dlDir "./download/" -fulltitle ${internalId} -fileOutExt ${fileExt}`;
 		const res = exec(cmd, { shell: 'powershell.exe' }, async (error, stdout) => {
 			console.log(stdout);
 			console.log(error);
@@ -53,13 +53,13 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 				return 1;
 			}
 			if (doNotStitch === true) {
-				const zipFile = fs.createWriteStream('../download/clips.zip');
+				const zipFile = fs.createWriteStream('./download/clips.zip');
 				const archive = archiver('zip', {
 					zlib: { level: 9 },
 				});
 
 				zipFile.on('close', async () => {
-					const stream = fs.createReadStream('../download/clips.zip');
+					const stream = fs.createReadStream('./download/clips.zip');
 					const result = await webdavClient.putFileContents('/TL Team/Projects/Test/clips.zip', stream);
 					if (result === false) {
 						return 1;
@@ -70,10 +70,10 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 					return 0;
 				});
 				archive.pipe(zipFile);
-				archive.directory('../download/', false);
+				archive.directory('./download/', false);
 				archive.finalize();
 			} else {
-				const stream = fs.createReadStream(`../download/${internalId}.${fileExt}`);
+				const stream = fs.createReadStream(`./download/${internalId}.${fileExt}`);
 				const result = await webdavClient.putFileContents(`/TL Team/Projects/Test/${projectName.replace(/\s+/g, '')}.${fileExt}`, stream);
 				if (result === false) {
 					return 1;
@@ -86,7 +86,7 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 		});
 		if (res !== 0) return false;
 	} else {
-		const cmd = `pwsh ./clipper.ps1 -videotype ${videoType} -inlink ${videoLink} -timestampsIn "${timestamps}" -dlDir "../download/" -fulltitle ${internalId} -fileOutExt ${fileExt}`;
+		const cmd = `pwsh ./clipper.ps1 -videotype ${videoType} -inlink ${videoLink} -timestampsIn "${timestamps}" -dlDir "./download/" -fulltitle ${internalId} -fileOutExt ${fileExt}`;
 		const res = exec(cmd, async (error, stdout) => {
 			console.log(stdout);
 			console.log(error);
@@ -95,13 +95,13 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 				return 1;
 			}
 			if (doNotStitch === true) {
-				const zipFile = fs.createWriteStream('../download/clips.zip');
+				const zipFile = fs.createWriteStream('./download/clips.zip');
 				const archive = archiver('zip', {
 					zlib: { level: 9 },
 				});
 
 				zipFile.on('close', async () => {
-					const stream = fs.createReadStream('../download/clips.zip');
+					const stream = fs.createReadStream('./download/clips.zip');
 					const result = await webdavClient.putFileContents('/TL Team/Projects/Test/clips.zip', stream);
 					if (result === false) {
 						return 1;
@@ -112,10 +112,10 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 					return 0;
 				});
 				archive.pipe(zipFile);
-				archive.directory('../download/', false);
+				archive.directory('./download/', false);
 				archive.finalize();
 			} else {
-				const stream = fs.createReadStream(`../download/${internalId}.${fileExt}`);
+				const stream = fs.createReadStream(`./download/${internalId}.${fileExt}`);
 				const result = await webdavClient.putFileContents(`/TL Team/Projects/Test/${projectName.replace(/\s+/g, '')}.${fileExt}`, stream);
 				if (result === false) {
 					return 1;
