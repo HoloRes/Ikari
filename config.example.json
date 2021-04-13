@@ -30,5 +30,6 @@
         "username": "",
         "password": ""
     },
-    "webhookSecret": ""
+    "webhookSecret": "",
+    "port": 3001
 }
