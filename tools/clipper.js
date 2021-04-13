@@ -87,11 +87,9 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 		});
 		if (res !== 0) return false;
 	} else {
-		// console.log(videoLink); // Debug
 		const proc = await spawn('pwsh', ['./tools/clipper.ps1', '-videotype', videoType, '-inlink', videoLink, '-timestampsIn', timestamps, '-dlDir', './download/', '-fulltitle', internalId, '-fileOUtExt', fileExt], {
 			cwd: path.join(__dirname, '../'),
 		});
-		// const proc = await spawn('echo'); // Debug to skip dl
 
 		proc.stderr.on('data', (data) => {
 			console.error(data.toString());
@@ -122,11 +120,10 @@ async function clipRequest([videoType, videoLink, timestamps, projectName, fileE
 				archive.finalize();
 			} else {
 				// TODO: Replace with internal id and properextension
-				const stream = fs.createReadStream('./download/HZmPB0f3cbI_Ylo3-uQQpkXPexehbDdvr.mkv');
+				const stream = fs.readFileSync(`./download/${internalId}.${fileExt}`);
 				const result = await webdavClient.putFileContents(`/TL Team/Projects/${projectName}/${projectName.replace(/\s+/g, '')}.${fileExt}`, stream);
 				if (result === false) {
-					console.log('FALSE');
-					return 1;
+					return false;
 				}
 			}
 			return true;
