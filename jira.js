@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 // Imports
 const { Router } = require('express');
 const { MessageEmbed } = require('discord.js');
