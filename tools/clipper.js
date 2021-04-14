@@ -54,8 +54,8 @@ const clipRequest = ([
 			rescaleVideo = 'true';
 		}
 	}
+	console.log(`Received Clipping Request ${internalId}, Is Multifile Clip: ${doNotStitch}, Is Rescaled: ${rescaleVideo}`);
 	console.log(`(DEBUG) Project File Path: /TL Team/Projects/${projectName}/`);
-	console.log(`Recieved Clipping Request ${internalId}, Is Multifile Clip: ${doNotStitch}, Is Rescaled: ${rescaleVideo}`);
 	if (await webdavClient.exists(`/TL Team/Projects/${projectName}/`) === false) {
 		// TODO: set up project directory with necessary documents via WebDAV
 		await webdavClient.createDirectory(`/TL Team/Projects/${projectName}/`);
@@ -73,6 +73,7 @@ const clipRequest = ([
 	});
 
 	proc.stdout.on('data', (data) => {
+		// TODO: Remove console log
 		console.log(data.toString());
 		if (data.toString() === 'Clipping Failed') reject();
 	});
