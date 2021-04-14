@@ -2,11 +2,14 @@
 const Discord = require('discord.js');
 const mongoose = require('mongoose');
 const express = require('express');
+const queue = require('queue');
 
 // Config
 const config = require('./config.json');
 
 // Variables
+const clipQueue = queue({ autostart: true, concurrency: 1, timeout: null });
+exports.clipQueue = clipQueue;
 
 // Pre-init
 // TODO: Add Sentry and Loki
@@ -51,6 +54,10 @@ client.on('message', (message) => {
 	const args = cmd.slice(1);
 	// Temporarily keeping all commands here
 	switch (cmd[0]) {
+	case 'queueState': {
+		message.channel.send(clipQueue.length);
+		break;
+	}
 	default: {
 		console.log(args);
 		break;

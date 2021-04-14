@@ -3,7 +3,6 @@
 const { Router } = require('express');
 const { MessageEmbed } = require('discord.js');
 const axios = require('axios');
-const queue = require('queue');
 
 // Models
 const IdLink = require('./models/IdLink');
@@ -12,12 +11,11 @@ const GroupLink = require('./models/GroupLink');
 
 // Local files
 const config = require('./config.json');
-const { client } = require('./index');
+const { client, clipQueue } = require('./index');
 const { clipRequest } = require('./tools/clipper');
 
 // Variables
 const url = `${config.jira.url}/rest/api/latest`;
-const clipQueue = queue({ autostart: true });
 
 // Init
 const router = Router();
@@ -128,49 +126,58 @@ router.post('/webhook', async (req, res) => {
 		} else if (req.body.transition && req.body.transition.transitionName === 'Send to Ikari') {
 			const videoRegex = /^(http(s)?:\/\/)?(www\.)?youtu((\.be\/)|(be\.com\/watch\?v=))[0-z_-]{11}$/g;
 			const videoType = videoRegex.test(req.body.issue.fields.customfield_10200) ? 'youtube' : 'other';
-			clipQueue.push(clipRequest([
-				videoType,
-				req.body.issue.fields.customfield_10200,
-				req.body.issue.fields.customfield_10201,
-				req.body.issue.fields.summary,
-				req.body.issue.fields.customfield_10300.value.toLowerCase(),
-				req.body.issue.fields.customfield_10205,
-			])
-				.then(() => {
-					axios.post(`${url}/issue/${link.jiraId}/transitions`, {
-						transition: {
-							id: '41',
-						},
-					}, {
-						auth: {
-							username: config.jira.username,
-							password: config.jira.password,
-						},
+			console.log('REQ RECIEVED');
+			clipQueue.push(() => {
+				clipRequest([
+					videoType,
+					req.body.issue.fields.customfield_10200,
+					req.body.issue.fields.customfield_10201,
+					req.body.issue.fields.summary,
+					req.body.issue.fields.customfield_10300.value.toLowerCase(),
+					req.body.issue.fields.customfield_10205,
+				])
+					.then(() => {
+						axios.post(`${url}/issue/${link.jiraId}/transitions`, {
+							transition: {
+								id: '41',
+							},
+						}, {
+							auth: {
+								username: config.jira.username,
+								password: config.jira.password,
+							},
+						})
+							.catch((err) => {
+								console.log(err);
+								throw new Error(err);
+							});
+						clipQueue.shift();
+						clipQueue.start();
+					}, () => {
+						axios.post(`${url}/issue/${link.jiraId}/transitions`, {
+							transition: {
+								id: '121',
+							},
+						}, {
+							auth: {
+								username: config.jira.username,
+								password: config.jira.password,
+							},
+						})
+							.catch((err) => {
+								console.log(err);
+								clipQueue.shift();
+								clipQueue.start();
+								throw new Error(err);
+							});
+						clipQueue.shift();
+						clipQueue.start();
 					})
-						.catch((err) => {
-							console.log(err);
-							throw new Error(err);
-						});
-				}, () => {
-					axios.post(`${url}/issue/${link.jiraId}/transitions`, {
-						transition: {
-							id: '121',
-						},
-					}, {
-						auth: {
-							username: config.jira.username,
-							password: config.jira.password,
-						},
-					})
-						.catch((err) => {
-							console.log(err);
-							throw new Error(err);
-						});
-				})
-				.catch((err) => {
-					console.log(err.response.data);
-					throw new Error(err);
-				}));
+					.catch((err) => {
+						console.log(err.response.data);
+						throw new Error(err);
+					});
+			});
 		} else {
 			let languages = '';
 
