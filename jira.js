@@ -2,6 +2,7 @@
 const { Router } = require('express');
 const { MessageEmbed } = require('discord.js');
 const axios = require('axios');
+const queue = require('queue');
 
 // Models
 const IdLink = require('./models/IdLink');
@@ -15,6 +16,7 @@ const { clipRequest } = require('./tools/clipper');
 
 // Variables
 const url = `${config.jira.url}/rest/api/latest`;
+const clipQueue = queue({ autostart: true });
 
 // Init
 const router = Router();
@@ -123,10 +125,9 @@ router.post('/webhook', async (req, res) => {
 			link.finished = true;
 			link.save();
 		} else if (req.body.transition && req.body.transition.transitionName === 'Send to Ikari') {
-			console.log(req.body.issue.fields.customfield_10300.value.toLowerCase());
-			const videoRegex = /^(http(s)?:\/\/)?(www\.)?youtu((\.be\/)|(be\.com\/watch\?v=))[0-z]{11}$/g;
+			const videoRegex = /^(http(s)?:\/\/)?(www\.)?youtu((\.be\/)|(be\.com\/watch\?v=))[0-z_-]{11}$/g;
 			const videoType = videoRegex.test(req.body.issue.fields.customfield_10200) ? 'youtube' : 'other';
-			clipRequest([
+			clipQueue.push(clipRequest([
 				videoType,
 				req.body.issue.fields.customfield_10200,
 				req.body.issue.fields.customfield_10201,
@@ -146,7 +147,7 @@ router.post('/webhook', async (req, res) => {
 						},
 					})
 						.catch((err) => {
-							console.log(err.response.data);
+							console.log(err);
 							throw new Error(err);
 						});
 				}, () => {
@@ -161,14 +162,14 @@ router.post('/webhook', async (req, res) => {
 						},
 					})
 						.catch((err) => {
-							console.log(err.response.data);
+							console.log(err);
 							throw new Error(err);
 						});
 				})
 				.catch((err) => {
 					console.log(err.response.data);
 					throw new Error(err);
-				});
+				}));
 		} else {
 			let languages = '';
 

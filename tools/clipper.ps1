@@ -1,6 +1,6 @@
 # Written and Tested by Sheer Curiosity
 
-# HoloClipper Revision 6 Version 2
+# HoloClipper Revision 7 Version 1
 
 # REQUIRED BINARIES (BOTH MUST BE ADDED TO PATH)
 # -ffmpeg
@@ -18,7 +18,8 @@ param (
     [string]$fileOutExt = "mkv", # Defines the output file extension                     Options: Any Video Extensions Supported By FFMPEG
     [string]$rescaleVideo = "false", # True/False rescale video to 1080p                     Options: True, False
     [string]$doNotStitch = "false",
-    [string]$isIkari = "true"
+    [string]$isIkari = "true",
+    [int]$parallelChunkSize = 5
 )
 
 # Define directory for temporary files
@@ -291,13 +292,14 @@ $clipper = {
             Throw "ERROR: YTDL failed to fetch media links"
         }
     }
+    $parallelChunkCount = 0
     while ($parserNum -gt 0) {
         $clipsSps += $fixedStartStamps[$clipnum]
         $clipsRt += $fixedRuntimeStamps[$clipnum]
         if ($videotype.toLower() -eq "youtube") {
             if ($miniclipnum -eq 1) {
                 ffmpeg -y -ss $clipsSps[$clipnum] -i ($glink1) -t $clipsRt[$clipnum] -ss $clipsSps[$clipnum] -i ($glink2) -t $clipsRt[$clipnum] -crf 18 "$dlDir/$fulltitle.$fileOutExt"
-            }
+             }
             if ($miniclipnum -ge 2) {
                 Start-RSJob -ScriptBlock {
                     $clipsSps = $args[0]
@@ -310,6 +312,7 @@ $clipper = {
                     $miniclipFileExt = $args[7]
                     ffmpeg -y -ss $clipsSps[$clipnum] -i ($glink1) -t $clipsRt[$clipnum] -ss $clipsSps[$clipnum] -i ($glink2) -t $clipsRt[$clipnum] -crf 18 "$tempdir/clip$clipnumout.$miniclipFileExt"
                 } -ArgumentList $clipsSps, $clipsRt, $clipnum, $glink1, $glink2, $tempdir, $clipnumout, $miniclipFileExt
+                $parallelChunkCount++
             }
         }
         if ($videotype.toLower() -eq "other") {
@@ -333,11 +336,16 @@ $clipper = {
                     $miniclipFileExt = $args[6]
                     ffmpeg -y -ss $clipsSps[$clipnum] -i ($glink) -t $clipsRt[$clipnum] -crf 18 "$tempdir/clip$clipnumout.$miniclipFileExt"
                 } -ArgumentList $clipsSps, $clipsRt, $clipnum, $glink, $tempdir, $clipnumout, $miniclipFileExt
+                $parallelChunkCount++
             }
         }
-        $clipnum ++
-        $clipnumout ++
-        $parserNum --
+    if ($parallelChunkCount -eq $parallelChunkSize) {
+        Get-RSJob | Wait-RSJob
+        $parallelChunkCount = 0
+    }
+    $clipnum ++
+    $clipnumout ++
+    $parserNum --
     }
     Get-RSJob | Wait-RSJob | Receive-RSJob
     $clipnum = 0

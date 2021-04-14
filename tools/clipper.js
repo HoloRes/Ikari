@@ -9,7 +9,8 @@ const path = require('path');
 // Local files
 const config = require('../config.json');
 
-const idRegex = /(\?v=|be\/).{11}/g;
+const ytIdRegex = /(\?v=|be\/).{11}/g;
+const otherIdRegex = /(?<=\.|\/\/)([\w-])+\w+(?=\.)/g;
 
 const webdavClient = createClient(
 	config.webdav.url,
@@ -34,7 +35,13 @@ const clipRequest = ([
 	if (!fs.existsSync('./download')) {
 		fs.mkdirSync('./download');
 	}
-	const internalId = `${videoLink.match(idRegex)[0].substring(3)}_${nanoid()}`;
+	let internalId = `DEFAULT_NULL_${nanoid()}`;
+	if (videoType === 'youtube') {
+		internalId = `yt_${videoLink.match(ytIdRegex)[0].substring(3)}_${nanoid()}`;
+	} else {
+		internalId = `other_${videoLink.match(otherIdRegex)}_${nanoid()}`;
+	}
+	console.log(`(DEBUG) Internal ID: ${internalId}`);
 	let doNotStitch = 'false';
 	let rescaleVideo = 'false';
 	let formatType = '-fileOutExt';
@@ -47,18 +54,22 @@ const clipRequest = ([
 			rescaleVideo = 'true';
 		}
 	}
-	console.log(`(DEBUG) Project File URL: /TL Team/Projects/${projectName}/`);
+	console.log(`(DEBUG) Project File Path: /TL Team/Projects/${projectName}/`);
 	console.log(`Recieved Clipping Request ${internalId}, Is Multifile Clip: ${doNotStitch}, Is Rescaled: ${rescaleVideo}`);
 	if (await webdavClient.exists(`/TL Team/Projects/${projectName}/`) === false) {
 		// TODO: set up project directory with necessary documents via WebDAV
-		webdavClient.createDirectory(`/TL Team/Projects/${projectName}/`);
+		await webdavClient.createDirectory(`/TL Team/Projects/${projectName}/`);
+		webdavClient.copyFile('/TL Team/Project template/Meta Template.docx', `/TL Team/Projects/${projectName}/Meta - ${projectName}.docx`);
+		webdavClient.copyFile('/TL Team/Project template/QC Template.docx', `/TL Team/Projects/${projectName}/QC - ${projectName}.docx`);
+		webdavClient.copyFile('/TL Team/Project template/TL Template.xlsx', `/TL Team/Projects/${projectName}/TL Sheet - ${projectName}.xlsx`);
 	}
-	const proc = await spawn('pwsh', ['./tools/clipper.ps1', '-videotype', videoType, '-inlink', videoLink, '-timestampsIn', timestamps, '-dlDir', './download/', '-fulltitle', internalId, formatType, fileExt, '-doNotStitch', doNotStitch, '-rescaleVideo', rescaleVideo, '-isIkari', 'true'], {
+	const proc = await spawn('pwsh', ['./tools/clipper.ps1', '-videotype', videoType, '-inlink', videoLink, '-timestampsIn', `"${timestamps}"`, '-dlDir', './download/', '-fulltitle', internalId, formatType, fileExt, '-doNotStitch', doNotStitch, '-rescaleVideo', rescaleVideo, '-isIkari', 'true'], {
 		cwd: path.join(__dirname, '../'),
 	});
 
 	proc.stderr.on('data', (data) => {
 		console.error(data.toString());
+		if (data.toString().startsWith('At ') || data.toString().startsWith('ERROR:')) reject();
 	});
 
 	proc.stdout.on('data', (data) => {
@@ -76,6 +87,7 @@ const clipRequest = ([
 
 			zipFile.on('close', async () => {
 				const stream = fs.readFileSync('./download/clips.zip');
+				console.log('(DEBUG): Uploading to Nextcloud...');
 				const result = await webdavClient.putFileContents(`/TL Team/Projects/${projectName}/clips.zip`, stream);
 				fs.unlink('./download/clips.zip', (err) => {
 					if (err) console.log(err);
@@ -83,11 +95,12 @@ const clipRequest = ([
 				fs.rmdir('./temp', { recursive: true }, (err) => {
 					if (err) console.log(err);
 				});
-				// TODO: Remove all clips
 				if (result === false) {
+					console.error('(DEBUG): Upload to Nextcloud failed');
 					reject();
 					return 1;
 				}
+				console.log('(DEBUG): Upload to Nextcloud succeeded');
 				return 0;
 			});
 			archive.pipe(zipFile);
@@ -97,14 +110,17 @@ const clipRequest = ([
 			archive.finalize();
 		} else {
 			const stream = fs.readFileSync(`./download/${internalId}.${fileExt}`);
+			console.log('(DEBUG): Uploading to Nextcloud...');
 			const result = await webdavClient.putFileContents(`/TL Team/Projects/${projectName}/${projectName.replace(/\s+/g, '')}.${fileExt}`, stream);
 			fs.unlink(`./download/${internalId}.${fileExt}`, (err) => {
 				if (err) console.log(err);
 			});
 			if (result === false) {
+				console.error('(DEBUG): Upload to Nextcloud failed');
 				reject();
 				return false;
 			}
+			console.log('(DEBUG): Upload to Nextcloud succeeded');
 		}
 		resolve();
 		return true;
