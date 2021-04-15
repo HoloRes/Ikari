@@ -1,13 +1,15 @@
 // Imports
 const Discord = require('discord.js');
-const { Server: SocketIO } = require('socket.io');
 const mongoose = require('mongoose');
 const express = require('express');
+const queue = require('queue');
 
 // Config
 const config = require('./config.json');
 
 // Variables
+const clipQueue = queue({ autostart: true, concurrency: 1, timeout: null });
+exports.clipQueue = clipQueue;
 
 // Pre-init
 // TODO: Add Sentry and Loki
@@ -32,24 +34,9 @@ exports.client = client;
 
 // Express
 const app = express();
-const server = app.listen(config['socket.io'].port);
-
-// Socket.IO
-const io = new SocketIO(server, { serveClient: false });
-io.use((socket, next) => {
-	if (socket.handshake.auth && socket.handshake.auth.token === config['socket.io'].authToken) {
-		next();
-	} else {
-		next(new Error('Socket.io Auth Error'));
-	}
-})
-	.on('connection', (socket) => {
-		console.log(`Connected to ${socket.id}`);
-	});
-exports.io = io;
+app.listen(config.port);
 
 // Init
-const { clipRequest } = require('./tools/clipper.js');
 const jira = require('./jira');
 
 app.use(express.json());
@@ -66,27 +53,13 @@ client.on('message', (message) => {
 		.split(' ');
 	const args = cmd.slice(1);
 	// Temporarily keeping all commands here
-	// Gonna level with you, most of this is held together with duct tape and prayers atm
 	switch (cmd[0]) {
-	case 'clip': {
-		if (args[0] === 'help' && args[1] === null) {
-			// TODO
-			message.channel.send('Usage:\nTODO: add usage guide');
-			break;
-		}
-		if (args[4] === 'mkv' || args[4] === 'mp4') {
-			clipRequest(message, args);
-		} else {
-			message.channel.send('Missing or Incorrect Arguments');
-		}
-		break;
-	}
-	case 'help': {
-		// TODO: Replace i! with prefix
-		message.channel.send('Currently Functional Commands:\n```clip - Type "i!clip help" for usage```');
+	case 'queueState': {
+		message.channel.send(clipQueue.length);
 		break;
 	}
 	default: {
+		console.log(args);
 		break;
 	}
 	}
@@ -94,4 +67,4 @@ client.on('message', (message) => {
 
 client.on('messageReactionAdd', jira.messageReactionAddHandler);
 
-client.login(config.discord.token);
+client.login(config.discord.authToken);
