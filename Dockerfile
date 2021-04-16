@@ -6,6 +6,8 @@ RUN groupadd --gid 1000 node \
 
 ENV NODE_VERSION 14.16.1
 
+RUN apt-get install -y gnupg
+
 RUN ARCH= && dpkgArch="$(dpkg --print-architecture)" \
   && case "${dpkgArch##*-}" in \
     amd64) ARCH='x64';; \
