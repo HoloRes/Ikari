@@ -7,10 +7,10 @@ RUN groupadd --gid 1000 node \
 ENV NODE_VERSION 14.16.1
 
 RUN curl -fsSL https://deb.nodesource.com/setup_14.x | bash - \
-  apt-get install -y nodejs
+  apt install -y nodejs
 
 # Additional dependencies          
-RUN apt-get install -y \
+RUN apt install -y \
 	python3 \
 	ffmpeg \
 	git
