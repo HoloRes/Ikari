@@ -76,7 +76,8 @@ RUN addgroup -g 1000 node \
 # Additional dependencies          
 RUN apk add --no-cache \
 	python3 \
-	ffmpeg
+	ffmpeg \
+	git
 
 RUN wget https://yt-dl.org/downloads/latest/youtube-dl -O /usr/local/bin/youtube-dl \
 	&& chmod a+rx /usr/local/bin/youtube-dl \
