@@ -1,0 +1,6 @@
+{
+  "assignmentFail": "Assigning failed, please try again",
+  "assignmentNotPossible": "You can't be assigned in the current workflow status.",
+  "assignmentNotPossibleArtist": "You can't be assigned to this issue (no artist role)",
+  "noJiraAccount": "Could not find your Jira account, please sign in once to link your account."
+}

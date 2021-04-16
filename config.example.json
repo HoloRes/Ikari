@@ -28,7 +28,14 @@
     "jira": {
         "url": "",
         "username": "",
-        "password": ""
+        "password": "",
+        "fields": {
+            "langs": "",
+            "extraArgs": "",
+            "videoLink": "",
+            "timestamps": "",
+            "fileExt": ""
+        }
     },
     "webhookSecret": "",
     "port": 3001
