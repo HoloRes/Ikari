@@ -74,10 +74,9 @@ RUN addgroup -g 1000 node \
 	&& npm --version
 
 # Additional dependencies          
-RUN apk add --no-cache \
+RUN apk add --upgrade --no-cache \
 	python3 \
 	ffmpeg \
-	openssh-client \
 	git
 
 RUN wget https://yt-dl.org/downloads/latest/youtube-dl -O /usr/local/bin/youtube-dl \
