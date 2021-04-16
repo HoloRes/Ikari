@@ -77,6 +77,7 @@ RUN addgroup -g 1000 node \
 RUN apk add --no-cache \
 	python3 \
 	ffmpeg \
+	openssh-client \
 	git
 
 RUN wget https://yt-dl.org/downloads/latest/youtube-dl -O /usr/local/bin/youtube-dl \
