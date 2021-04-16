@@ -145,7 +145,7 @@ COPY package-lock.json .
 
 # Trust GitHub for Discord.JS master
 RUN git config --global url."https://github.com/".insteadOf git@github.com: \
-    && git config --global url."https://".insteadOf git://
+    && git config --global url."https://".insteadOf ssh://
 
 # Install packages
 RUN npm ci
