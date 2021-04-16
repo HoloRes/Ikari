@@ -54,13 +54,13 @@ router.post('/webhook', async (req, res) => {
 		req.body.issue.fields[config.jira.fields.langs].map((language) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
 
 		const embed = new MessageEmbed()
-			.setTitle(`Project - ${req.body.issue.key}`)
+			.setTitle(`${req.body.issue.key}`)
 			.setColor('#0052cc')
 			.setDescription(req.body.issue.fields.summary || 'None')
-			.addField('Status', req.body.issue.fields.status.name)
-			.addField('Assignee', 'Unassigned')
-			.addField('Priority', req.body.issue.fields.priority.name)
-			.addField('Languages', languages)
+			.addField('Status', req.body.issue.fields.status.name, true)
+			.addField('Assignee', 'Unassigned', true)
+			.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
+			.setFooter(`Due date: ${req.body.issue.fields.duedate || 'unknown'}`)
 			.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
 
 		const msg = await projectsChannel.send(embed)
@@ -183,13 +183,13 @@ router.post('/webhook', async (req, res) => {
 			req.body.issue.fields[config.jira.fields.langs].map((language) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
 
 			const embed = new MessageEmbed()
-				.setTitle(`Project - ${req.body.issue.key}`)
+				.setTitle(`${req.body.issue.key}`)
 				.setColor('#0052cc')
 				.setDescription(req.body.issue.fields.summary || 'None')
-				.addField('Status', req.body.issue.fields.status.name)
-				.addField('Assignee', msg.embeds[0].fields[1].value)
-				.addField('Priority', req.body.issue.fields.priority.name)
-				.addField('Languages', languages)
+				.addField('Status', req.body.issue.fields.status.name, true)
+				.addField('Assignee', msg.embeds[0].fields[1].value, true)
+				.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
+				.setFooter(`Due date: ${req.body.issue.fields.duedate || 'unknown'}`)
 				.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
 
 			msg.edit(embed);
@@ -223,12 +223,11 @@ router.post('/webhook/artist', async (req, res) => {
 		});
 
 		const embed = new MessageEmbed()
-			.setTitle(`Project - ${req.body.issue.key}`)
+			.setTitle(`${req.body.issue.key}`)
 			.setColor('#0052cc')
 			.setDescription(req.body.issue.fields.summary || 'None')
-			.addField('Status', req.body.issue.fields.status.name)
-			.addField('Assignee', 'Unassigned')
-			.addField('Priority', req.body.issue.fields.priority.name)
+			.addField('Status', req.body.issue.fields.status.name, true)
+			.addField('Assignee', 'Unassigned', true)
 			.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
 
 		const msg = await artistsProjectsChannel.send(embed)

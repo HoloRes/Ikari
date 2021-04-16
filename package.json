@@ -19,7 +19,7 @@
   "dependencies": {
     "archiver": "^5.3.0",
     "axios": "^0.21.1",
-    "discord.js": "^12.5.1",
+    "discord.js": "github:discordjs/discord.js",
     "express": "^4.17.1",
     "mongoose": "^5.11.18",
     "nanoid": "^3.1.20",
