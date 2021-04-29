@@ -94,6 +94,7 @@ client.ws.on('INTERACTION_CREATE', async (interaction) => {
 			.callback
 			.post({ data: { type: 1 } });
 	}
+	// eslint-disable-next-line consistent-return
 	if (interaction.type !== 2) return;
 
 	if (interaction.data.name === 'project') {
@@ -108,8 +109,9 @@ client.ws.on('INTERACTION_CREATE', async (interaction) => {
 				username: config.jira.username,
 				password: config.jira.password,
 			},
-		}).catch(() => {
-			new Discord.WebhookClient(client.user.id, interaction.token).editMessage('@original', 'Something went wrong, please try again');
+		}).catch((err) => {
+			if (err.response && err.response.status === 404) return new Discord.WebhookClient(client.user.id, interaction.token).editMessage('@original', 'Project not found');
+			return new Discord.WebhookClient(client.user.id, interaction.token).editMessage('@original', 'Something went wrong, please try again');
 		});
 
 		let languages = '';
