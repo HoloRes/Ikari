@@ -1,45 +1,43 @@
 // Imports
-const Discord = require('discord.js');
-const mongoose = require('mongoose');
-const express = require('express');
-const axios = require('axios');
-const queue = require('queue');
+import Discord from 'discord.js';
+import mongoose from 'mongoose';
+import express from 'express';
+import axios from 'axios';
+import queue from 'queue';
+
+// Init
+import * as jira from './jira';
 
 // Config
-const config = require('./config.json');
+const config = require('../config.json');
 
 // Variables
-const clipQueue = queue({ autostart: true, concurrency: 1, timeout: null });
-exports.clipQueue = clipQueue;
+export const clipQueue = queue({ autostart: true, concurrency: 1, timeout: null });
 
 // Pre-init
 // TODO: Add Sentry and Loki
 // Mongoose
-exports.conn1 = mongoose.createConnection(`mongodb+srv://${config.mongodb.username}:${config.mongodb.password}@${config.mongodb.host}/${config.mongodb.database}`, {
+export const conn1 = mongoose.createConnection(`mongodb+srv://${config.mongodb.username}:${config.mongodb.password}@${config.mongodb.host}/${config.mongodb.database}`, {
 	useNewUrlParser: true,
 	useUnifiedTopology: true,
 	useFindAndModify: false,
 });
 
-exports.conn2 = mongoose.createConnection(`mongodb+srv://${config.mongoDbOauth.username}:${config.mongoDbOauth.password}@${config.mongoDbOauth.host}/${config.mongoDbOauth.database}`, {
+export const conn2 = mongoose.createConnection(`mongodb+srv://${config.mongoDbOauth.username}:${config.mongoDbOauth.password}@${config.mongoDbOauth.host}/${config.mongoDbOauth.database}`, {
 	useNewUrlParser: true,
 	useUnifiedTopology: true,
 	useFindAndModify: false,
 });
 
 // Discord
-const client = new Discord.Client({
+export const client = new Discord.Client({
 	partials: ['GUILD_MEMBER', 'MESSAGE', 'REACTION'],
 	intents: ['GUILDS', 'GUILD_INTEGRATIONS', 'GUILD_MESSAGES', 'GUILD_MESSAGE_REACTIONS'],
 });
-exports.client = client;
 
 // Express
 const app = express();
 app.listen(config.port);
-
-// Init
-const jira = require('./jira');
 
 app.use(express.json());
 app.use(jira.router);
@@ -49,41 +47,41 @@ client.on('ready', () => {
 });
 
 // Command handler
-client.on('message', (message) => {
+client.on('messageCreate', (message) => {
 	if (message.author.bot || !message.content.startsWith(config.discord.prefix)) return;
 	const cmd = message.content.slice(config.discord.prefix.length)
 		.split(' ');
 	const args = cmd.slice(1);
 	// Temporarily keeping all commands here
 	switch (cmd[0]) {
-	case 'queueState': {
-		message.channel.send(clipQueue.length);
-		break;
-	}
-	case 'slashCommandSetup': {
-		if (message.author.id !== '515984841716793344') return;
-		client.api.applications(client.user.id).guilds(message.guild.id).commands.post({
-			data: {
-				name: 'project',
-				description: 'Show project info',
-				options: [
-					{
-						type: 3,
-						name: 'id',
-						description: 'The project id',
-						default: false,
-						required: true,
-					},
-				],
-			},
-		});
-		message.reply('Done!');
-		break;
-	}
-	default: {
-		console.log(args);
-		break;
-	}
+		case 'queueState': {
+			message.channel.send(clipQueue.length);
+			break;
+		}
+		case 'slashCommandSetup': {
+			if (message.author.id !== '515984841716793344') return;
+			client.api.applications(client.user.id).guilds(message.guild.id).commands.post({
+				data: {
+					name: 'project',
+					description: 'Show project info',
+					options: [
+						{
+							type: 3,
+							name: 'id',
+							description: 'The project id',
+							default: false,
+							required: true,
+						},
+					],
+				},
+			});
+			message.reply('Done!');
+			break;
+		}
+		default: {
+			console.log(args);
+			break;
+		}
 	}
 });
 

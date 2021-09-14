@@ -1,26 +1,25 @@
 /* eslint-disable no-console */
 // Imports
-const { Router } = require('express');
-const { MessageEmbed } = require('discord.js');
-const axios = require('axios');
+import { Router } from 'express';
+import { MessageEmbed } from 'discord.js';
+import axios from 'axios';
 
 // Models
-const IdLink = require('./models/IdLink');
-const Setting = require('./models/Setting');
-const GroupLink = require('./models/GroupLink');
+import IdLink from './models/IdLink';
+import Setting from './models/Setting';
+import GroupLink from './models/GroupLink';
+import { client, clipQueue } from './index';
+import { clipRequest } from './tools/clipper';
 
 // Local files
-const config = require('./config.json');
-const strings = require('./strings.json');
-const { client, clipQueue } = require('./index');
-const { clipRequest } = require('./tools/clipper');
+const config = require('../config.json');
+const strings = require('../strings.json');
 
 // Variables
 const url = `${config.jira.url}/rest/api/latest`;
 
 // Init
-const router = Router();
-exports.router = router;
+export const router = Router();
 
 // Routes
 router.post('/webhook', async (req, res) => {
@@ -42,6 +41,8 @@ router.post('/webhook', async (req, res) => {
 			throw new Error(err);
 		});
 
+	if (projectsChannel?.type !== 'GUILD_TEXT') throw new Error('Channel is not a guild text channel');
+
 	if (req.body.webhookEvent && req.body.webhookEvent === 'jira:issue_created') {
 		const link = new IdLink({
 			jiraId: req.body.issue.id,
@@ -50,8 +51,12 @@ router.post('/webhook', async (req, res) => {
 
 		let languages = '';
 
+		type JiraField = {
+			value: string;
+		};
+
 		// eslint-disable-next-line no-return-assign
-		req.body.issue.fields[config.jira.fields.langs].map((language) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
+		req.body.issue.fields[config.jira.fields.langs].map((language: JiraField) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
 
 		const embed = new MessageEmbed()
 			.setTitle(`${req.body.issue.key}`)
@@ -63,7 +68,7 @@ router.post('/webhook', async (req, res) => {
 			.setFooter(`Due date: ${req.body.issue.fields.duedate || 'unknown'}`)
 			.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
 
-		const msg = await projectsChannel.send(embed)
+		const msg = await projectsChannel.send({ embeds: [embed] })
 			.catch((err) => {
 				throw new Error(err);
 			});
@@ -79,8 +84,8 @@ router.post('/webhook', async (req, res) => {
 			});
 		if (!link || link.finished) return;
 
-		const msg = await projectsChannel.messages.fetch(link.discordMessageId)
-			.catch((err) => {
+		const msg = await projectsChannel.messages.fetch(link.discordMessageId!)
+			.catch((err: Error) => {
 				throw new Error(err);
 			});
 
@@ -90,7 +95,7 @@ router.post('/webhook', async (req, res) => {
 					name: 'Assignee',
 					value: 'Unassigned',
 				});
-				msg.edit(embed);
+				msg.edit({ embeds: [embed] });
 
 				const status = req.body.issue.fields.status.name;
 				if (status === 'Open' || status === 'Rejected' || status === 'Being clipped' || status === 'Uploaded') return;
@@ -113,7 +118,7 @@ router.post('/webhook', async (req, res) => {
 					name: 'Assignee',
 					value: `<@${user._id}>`,
 				});
-				msg.edit(embed);
+				msg.edit({ embeds: [embed] });
 				client.users.fetch(user._id)
 					.then((fetchedUser) => {
 						fetchedUser.send('New assignment', { embed });
@@ -306,7 +311,7 @@ router.post('/webhook/artist', async (req, res) => {
 });
 
 // Event handlers
-exports.messageReactionAddHandler = async (messageReaction, reactionUser) => {
+export const messageReactionAddHandler = async (messageReaction, reactionUser) => {
 	if (reactionUser.bot || messageReaction.emoji.id !== '819518919739965490') return;
 	const link = await IdLink.findOne({ discordMessageId: messageReaction.message.id }).lean().exec()
 		.catch((err) => {

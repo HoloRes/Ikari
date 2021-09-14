@@ -23,7 +23,7 @@ const webdavClient = createClient(
 );
 
 // eslint-disable-next-line consistent-return
-const clipRequest = ([
+export const clipRequest = async ([
 	videoType,
 	videoLink,
 	timestamps,
@@ -31,7 +31,7 @@ const clipRequest = ([
 	fileExt,
 	extraArgs,
 // eslint-disable-next-line no-async-promise-executor
-]) => new Promise(async (resolve, reject) => {
+]) => {
 	if (!fs.existsSync('./download')) {
 		fs.mkdirSync('./download');
 	}
@@ -69,13 +69,13 @@ const clipRequest = ([
 
 	proc.stderr.on('data', (data) => {
 		console.error(data.toString());
-		if (data.toString().startsWith('At ') || data.toString().startsWith('ERROR:')) reject();
+		if (data.toString().startsWith('At ') || data.toString().startsWith('ERROR:')) throw new Error(data.toString());
 	});
 
 	proc.stdout.on('data', (data) => {
 		// TODO: Remove console log
 		console.log(data.toString());
-		if (data.toString() === 'Clipping Failed') reject();
+		if (data.toString() === 'Clipping Failed') throw new Error('Clipping Failed')
 	});
 
 	proc.on('exit', async (code) => {
@@ -98,7 +98,7 @@ const clipRequest = ([
 				});
 				if (result === false) {
 					console.error('(DEBUG): Upload to Nextcloud failed');
-					reject();
+					throw new Error('Nextcloud upload failed');
 					return 1;
 				}
 				console.log('(DEBUG): Upload to Nextcloud succeeded');
@@ -118,13 +118,11 @@ const clipRequest = ([
 			});
 			if (result === false) {
 				console.error('(DEBUG): Upload to Nextcloud failed');
-				reject();
+				throw new Error('Nextcloud upload failed');
 				return false;
 			}
 			console.log('(DEBUG): Upload to Nextcloud succeeded');
 		}
-		resolve();
 		return true;
 	});
-});
-exports.clipRequest = clipRequest;
+}
