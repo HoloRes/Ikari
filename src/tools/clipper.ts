@@ -23,21 +23,20 @@ const webdavClient = createClient(
 );
 
 // eslint-disable-next-line consistent-return
-export const clipRequest = async ([
+const clipRequest = async ([
 	videoType,
 	videoLink,
 	timestamps,
 	projectName,
 	fileExt,
 	extraArgs,
-// eslint-disable-next-line no-async-promise-executor
-]) => {
+]: any[]) => {
 	if (!fs.existsSync('./download')) {
 		fs.mkdirSync('./download');
 	}
 	let internalId = `DEFAULT_NULL_${nanoid()}`;
 	if (videoType === 'youtube') {
-		internalId = `yt_${videoLink.match(ytIdRegex)[0].substring(3)}_${nanoid()}`;
+		internalId = `yt_${videoLink.match(ytIdRegex)![0].substring(3)}_${nanoid()}`;
 	} else {
 		internalId = `other_${videoLink.match(otherIdRegex)}_${nanoid()}`;
 	}
@@ -64,21 +63,21 @@ export const clipRequest = async ([
 		webdavClient.copyFile('/TL Team/Project template/TL Template.xlsx', `/TL Team/Projects/${projectName}/TL Sheet - ${projectName}.xlsx`);
 	}
 	const proc = await spawn('pwsh', ['./tools/clipper.ps1', '-videotype', videoType, '-inlink', videoLink, '-timestampsIn', `"${timestamps}"`, '-dlDir', './download/', '-fulltitle', internalId, formatType, fileExt, '-doNotStitch', doNotStitch, '-rescaleVideo', rescaleVideo, '-isIkari', 'true'], {
-		cwd: path.join(__dirname, '../'),
+		cwd: path.join(__dirname, process.env.NODE_ENV === 'production' ? '../' : '../../'),
 	});
 
-	proc.stderr.on('data', (data) => {
+	proc.stderr.on('data', (data: any) => {
 		console.error(data.toString());
 		if (data.toString().startsWith('At ') || data.toString().startsWith('ERROR:')) throw new Error(data.toString());
 	});
 
-	proc.stdout.on('data', (data) => {
+	proc.stdout.on('data', (data: any) => {
 		// TODO: Remove console log
 		console.log(data.toString());
-		if (data.toString() === 'Clipping Failed') throw new Error('Clipping Failed')
+		if (data.toString() === 'Clipping Failed') throw new Error('Clipping Failed');
 	});
 
-	proc.on('exit', async (code) => {
+	proc.on('exit', async (code: number) => {
 		if (code === 1) return false;
 		if (doNotStitch === 'true') {
 			const zipFile = fs.createWriteStream('./download/clips.zip');
@@ -90,10 +89,10 @@ export const clipRequest = async ([
 				const stream = fs.readFileSync('./download/clips.zip');
 				console.log('(DEBUG): Uploading to Nextcloud...');
 				const result = await webdavClient.putFileContents(`/TL Team/Projects/${projectName}/clips.zip`, stream);
-				fs.unlink('./download/clips.zip', (err) => {
+				fs.unlink('./download/clips.zip', (err?: Error) => {
 					if (err) console.log(err);
 				});
-				fs.rmdir('./temp', { recursive: true }, (err) => {
+				fs.rmdir('./temp', { recursive: true }, (err?: Error) => {
 					if (err) console.log(err);
 				});
 				if (result === false) {
@@ -113,7 +112,7 @@ export const clipRequest = async ([
 			const stream = fs.readFileSync(`./download/${internalId}.${fileExt}`);
 			console.log('(DEBUG): Uploading to Nextcloud...');
 			const result = await webdavClient.putFileContents(`/TL Team/Projects/${projectName}/${projectName.replace(/\s+/g, '')}.${fileExt}`, stream);
-			fs.unlink(`./download/${internalId}.${fileExt}`, (err) => {
+			fs.unlink(`./download/${internalId}.${fileExt}`, (err?: Error) => {
 				if (err) console.log(err);
 			});
 			if (result === false) {
@@ -125,4 +124,5 @@ export const clipRequest = async ([
 		}
 		return true;
 	});
-}
+};
+export default clipRequest;

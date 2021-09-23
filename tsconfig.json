@@ -1,3 +1,11 @@
 {
+    "compilerOptions": {
+        "outDir": "./dist",
+        "typeRoots": ["./node_modules/@types", "./src/custom_typings"],
+        "resolveJsonModule": true
+    },
+    "include": [
+        "./src/**/*"
+    ],
 	"extends": "@tsconfig/node16/tsconfig.json"
 }
