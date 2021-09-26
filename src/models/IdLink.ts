@@ -5,7 +5,7 @@ import { conn1 } from '../index';
 interface Project {
 	jiraId?: string;
 	discordMessageId?: string;
-	type: 'translation'|'artist';
+	type: 'translation' | 'artist';
 	finished: boolean;
 }
 

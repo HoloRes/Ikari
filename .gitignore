@@ -111,3 +111,6 @@ config.json
 
 download/
 temp/
+
+# Ignore DevSpace cache and log folder
+.devspace/

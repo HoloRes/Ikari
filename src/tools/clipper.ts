@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Local files
-const config = require('../config.json');
+const config = require('../../config.json');
 
 const ytIdRegex = /(\?v=|be\/).{11}/g;
 const otherIdRegex = /(?<=\.|\/\/)([\w-])+\w+(?=\.)/g;

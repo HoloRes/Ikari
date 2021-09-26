@@ -1,5 +1,5 @@
 // Imports
-import mongoose from 'mongoose'
+import mongoose from 'mongoose';
 import { conn2 } from '../index';
 
 interface GroupLink {

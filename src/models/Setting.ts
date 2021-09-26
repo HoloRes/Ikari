@@ -1,5 +1,5 @@
 // Imports
-import mongoose from 'mongoose'
+import mongoose from 'mongoose';
 import { conn1 } from '../index';
 
 interface Setting {

@@ -140,7 +140,8 @@ RUN ARCH= && dpkgArch="$(dpkg --print-architecture)" \
 WORKDIR /tmp
 COPY package.json .
 COPY package-lock.json .
-COPY src .
+COPY tsconfig.json .
+COPY src ./src
 RUN npm ci \
     && npm run build
 
@@ -151,7 +152,7 @@ WORKDIR /app
 COPY package.json .
 COPY package-lock.json .
 RUN npm ci \
-    && cp /tmp/dist/ ./
+    && cp -r /tmp/dist/ .
 COPY tools .
 RUN rm -rf /tmp
 
