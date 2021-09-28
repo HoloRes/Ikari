@@ -98,7 +98,6 @@ const clipRequest = async ([
 				if (result === false) {
 					console.error('(DEBUG): Upload to Nextcloud failed');
 					throw new Error('Nextcloud upload failed');
-					return 1;
 				}
 				console.log('(DEBUG): Upload to Nextcloud succeeded');
 				return 0;
@@ -118,7 +117,6 @@ const clipRequest = async ([
 			if (result === false) {
 				console.error('(DEBUG): Upload to Nextcloud failed');
 				throw new Error('Nextcloud upload failed');
-				return false;
 			}
 			console.log('(DEBUG): Upload to Nextcloud succeeded');
 		}
