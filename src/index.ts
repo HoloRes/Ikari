@@ -7,6 +7,7 @@ import express from 'express';
 import queue from 'queue';
 import * as util from 'util';
 import { Version2Client, Config as JiraConfig } from 'jira.js';
+import helmet from 'helmet';
 
 // Config
 // eslint-disable-next-line import/order
@@ -56,9 +57,16 @@ const rest = new DiscordREST({ version: '9' }).setToken(config.discord.authToken
 const app = express();
 app.listen(config.port);
 
+app.use(helmet());
 app.use(express.json());
 app.use(jira.router);
 
+// Heartbeat route
+app.get('/heartbeat', (req, res) => {
+	res.status(200).send('OK');
+});
+
+// Discord
 client.on('ready', () => {
 	console.log('READY');
 });
