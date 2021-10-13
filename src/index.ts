@@ -7,6 +7,7 @@ import express from 'express';
 import axios, { AxiosResponse } from 'axios';
 import queue from 'queue';
 import * as util from 'util';
+import { Version2Client, Config as JiraConfig } from 'jira.js';
 import { components as JiraComponents } from './types/jira';
 
 // Config
@@ -42,6 +43,15 @@ export const client = new Discord.Client({
 });
 const rest = new DiscordREST({ version: '9' }).setToken(config.discord.authToken);
 
+// Jira
+const jiraClient = new Version2Client({
+	host: config.jira.url,
+	credentials: {
+		username: config.jira.username,
+		password: config.jira.password,
+	},
+} as JiraConfig);
+
 // Express
 const app = express();
 app.listen(config.port);
@@ -59,7 +69,7 @@ client.on('messageCreate', (message) => {
 	const cmd = message.content.slice(config.discord.prefix.length)
 		.split(' ');
 	const args = cmd.slice(1);
-	// Temporarily keeping all commands here
+	// Debug commands
 	switch (cmd[0]) {
 		case 'queueState': {
 			message.channel.send(clipQueue.length.toString(10));
@@ -130,6 +140,12 @@ client.on('interactionCreate', async (interaction) => {
 
 		const key = interaction.options.getString('id', true);
 
+		const issue = await jiraClient.issues.getIssue({ issueIdOrKey: key })
+			.catch(async (err) => {
+				console.error(err);
+				await interaction.editReply('Something went wrong, please try again later.');
+			});
+
 		const { data } = await axios.get(`${config.jira.url}/rest/api/2/issue/${key}`, {
 			auth: {
 				username: config.jira.username,
@@ -143,7 +159,11 @@ client.on('interactionCreate', async (interaction) => {
 		let languages = '';
 
 		let user = 'None';
-		if (data.fields!.assignee) {
+		if (issue!.fields!.assignee) {
+			type UserLink = {
+				_id: string;
+			};
+
 			const { data: userData } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
 				params: { key: data.fields!.assignee.key },
 				auth: {
@@ -154,17 +174,17 @@ client.on('interactionCreate', async (interaction) => {
 				console.log(err.response.data);
 				await interaction.editReply('Something went wrong, please try again later.');
 				throw new Error(err);
-			}) as AxiosResponse;
+			}) as AxiosResponse<UserLink>;
 			user = `<@${userData._id}`;
 		}
 
 		// eslint-disable-next-line no-return-assign
-		data.fields![config.jira.fields.langs].map((language: JiraComponents['schemas']['CustomFieldOption']) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
+		issue!.fields![config.jira.fields.langs].map((language: JiraComponents['schemas']['CustomFieldOption']) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
 
-		let timestamps = data.fields![config.jira.fields.timestamps];
-		if (data.fields![config.jira.fields.timestamps].split(',').length > 3) {
+		let timestamps = issue!.fields![config.jira.fields.timestamps];
+		if (issue!.fields![config.jira.fields.timestamps].split(',').length > 3) {
 			timestamps = '';
-			const split = data.fields![config.jira.fields.timestamps].split(',');
+			const split = issue!.fields![config.jira.fields.timestamps].split(',');
 			// eslint-disable-next-line no-plusplus
 			for (let i = 0; i < 3; i++) {
 				if (i !== 0)timestamps += ',';
@@ -174,20 +194,20 @@ client.on('interactionCreate', async (interaction) => {
 		}
 
 		const embed = new Discord.MessageEmbed()
-			.setTitle(` ${data.key}`)
+			.setTitle(` ${issue!.key}`)
 			.setColor('#0052cc')
-			.setDescription(data.fields!.summary || 'None')
-			.addField('Status', data.fields!.status.name, true)
+			.setDescription(issue!.fields!.summary || 'None')
+			.addField('Status', issue!.fields!.status.name!, true)
 			.addField('Assignee', user, true)
-			.addField('Source', `[link](${data.fields![config.jira.fields.videoLink]})`)
+			.addField('Source', `[link](${issue!.fields![config.jira.fields.videoLink]})`)
 			.addField('Timestamp(s)', timestamps)
-			.setURL(`${config.jira.url}/projects/${data.fields!.project.key}/issues/${data.key}`)
-			.setFooter(`Due date: ${data.fields!.duedate || 'unknown'}`);
+			.setURL(`${config.jira.url}/projects/${issue!.fields!.project.key}/issues/${issue!.key}`)
+			.setFooter(`Due date: ${issue!.fields!.duedate || 'unknown'}`);
 
 		await interaction.editReply({ embeds: [embed] });
 	}
 });
 
-client.on('messageReactionAdd', jira.messageReactionAddHandler);
+// client.on('messageReactionAdd', jira.messageReactionAddHandler);
 
 client.login(config.discord.authToken);

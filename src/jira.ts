@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 // Imports
-import { Router } from 'express';
-import Discord, { BaseGuildTextChannel, MessageEmbed } from 'discord.js';
+import { Router, Request } from 'express';
+import { BaseGuildTextChannel, MessageEmbed } from 'discord.js';
 import axios from 'axios';
 
 // Models
@@ -10,6 +10,7 @@ import Setting from './models/Setting';
 import GroupLink from './models/GroupLink';
 import { client, clipQueue } from './index';
 import clipRequest from './tools/clipper';
+import { components } from './types/jira';
 
 // Local files
 const config = require('../config.json');
@@ -19,14 +20,25 @@ const strings = require('../strings.json');
 const url = `${config.jira.url}/rest/api/latest`;
 
 // Init
+// eslint-disable-next-line import/prefer-default-export
 export const router = Router();
 
 type JiraField = {
 	value: string;
 };
 
+interface WebhookBody {
+	timestamp: string;
+	webhookEvent: string;
+	user: components['schemas']['UserBean'];
+	issue: components['schemas']['IssueBean'];
+	changelog: components['schemas']['Changelog'];
+	comment: components['schemas']['Comment'];
+	transition: components['schemas']['Transition'] & { transitionName: string };
+}
+
 // Routes
-router.post('/webhook', async (req, res) => {
+router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 	if (req.query.token !== config.webhookSecret) {
 		res.status(403).end();
 		return;
@@ -56,17 +68,17 @@ router.post('/webhook', async (req, res) => {
 		let languages = '';
 
 		// eslint-disable-next-line no-return-assign
-		req.body.issue.fields[config.jira.fields.langs].map((language: JiraField) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
+		req.body.issue.fields![config.jira.fields.langs].map((language: JiraField) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
 
 		const embed = new MessageEmbed()
 			.setTitle(`${req.body.issue.key}`)
 			.setColor('#0052cc')
-			.setDescription(req.body.issue.fields.summary || 'None')
-			.addField('Status', req.body.issue.fields.status.name, true)
+			.setDescription(req.body.issue.fields!.summary || 'None')
+			.addField('Status', req.body.issue.fields!.status.name, true)
 			.addField('Assignee', 'Unassigned', true)
-			.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
-			.setFooter(`Due date: ${req.body.issue.fields.duedate || 'unknown'}`)
-			.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
+			.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
+			.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
+			.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
 
 		const msg = await projectsChannel.send({ embeds: [embed] })
 			.catch((err) => {
@@ -90,20 +102,20 @@ router.post('/webhook', async (req, res) => {
 			});
 
 		if (req.body.transition && req.body.transition.transitionName === 'Assign') {
-			if (req.body.issue.fields.assignee === null) {
+			if (req.body.issue.fields!.assignee === null) {
 				const embed = msg.embeds[0].spliceFields(1, 1, {
 					name: 'Assignee',
 					value: 'Unassigned',
 				});
 				msg.edit({ embeds: [embed] });
 
-				const status = req.body.issue.fields.status.name;
+				const status = req.body.issue.fields!.status.name;
 				if (status === 'Open' || status === 'Rejected' || status === 'Being clipped' || status === 'Uploaded') return;
 
 				msg.react('819518919739965490');
 			} else {
 				const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
-					params: { key: req.body.issue.fields.assignee.key },
+					params: { key: req.body.issue.fields!.assignee.key },
 					auth: {
 						username: config.oauthServer.clientId,
 						password: config.oauthServer.clientSecret,
@@ -131,16 +143,16 @@ router.post('/webhook', async (req, res) => {
 			});
 		} else if (req.body.transition && req.body.transition.transitionName === 'Send to Ikari') {
 			const videoRegex = /^(http(s)?:\/\/)?(www\.)?youtu((\.be\/)|(be\.com\/watch\?v=))[0-z_-]{11}$/g;
-			const videoType = videoRegex.test(req.body.issue.fields[config.jira.fields.videoLink]) ? 'youtube' : 'other';
+			const videoType = videoRegex.test(req.body.issue.fields![config.jira.fields.videoLink]) ? 'youtube' : 'other';
 			console.log('REQ RECEIVED');
 			clipQueue.push((cb) => {
 				clipRequest([
 					videoType,
-					req.body.issue.fields[config.jira.fields.videoLink],
-					req.body.issue.fields[config.jira.fields.timestamps],
-					req.body.issue.fields.summary,
-					req.body.issue.fields[config.jira.fields.fileExt].value.toLowerCase(),
-					req.body.issue.fields[config.jira.fields.extraArgs],
+					req.body.issue.fields![config.jira.fields.videoLink],
+					req.body.issue.fields![config.jira.fields.timestamps],
+					req.body.issue.fields!.summary,
+					req.body.issue.fields![config.jira.fields.fileExt].value.toLowerCase(),
+					req.body.issue.fields![config.jira.fields.extraArgs],
 				])
 					.then(() => {
 						axios.post(`${url}/issue/${link.jiraId}/transitions`, {
@@ -186,23 +198,25 @@ router.post('/webhook', async (req, res) => {
 			let languages = '';
 
 			// eslint-disable-next-line no-return-assign
-			req.body.issue.fields[config.jira.fields.langs].map((language: JiraField) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
+			req.body.issue.fields![config.jira.fields.langs].map((language: JiraField) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
 
 			const embed = new MessageEmbed()
 				.setTitle(`${req.body.issue.key}`)
 				.setColor('#0052cc')
-				.setDescription(req.body.issue.fields.summary || 'None')
-				.addField('Status', req.body.issue.fields.status.name, true)
+				.setDescription(req.body.issue.fields!.summary || 'None')
+				.addField('Status', req.body.issue.fields!.status.name, true)
 				.addField('Assignee', msg.embeds[0].fields[1].value, true)
-				.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
-				.setFooter(`Due date: ${req.body.issue.fields.duedate || 'unknown'}`)
-				.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
+				.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
+				.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
+				.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
 
 			msg.edit({ embeds: [embed] });
 		}
 	}
 });
 
+/* eslint-disable */
+/*
 router.post('/webhook/artist', async (req, res) => {
 	if (req.query.token !== config.webhookSecret) {
 		res.status(403).end();
@@ -571,3 +585,4 @@ export const messageReactionAddHandler = async (
 		}
 	}
 };
+ */

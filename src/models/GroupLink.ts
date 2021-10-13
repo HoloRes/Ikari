@@ -13,7 +13,7 @@ interface GroupLink {
 const GroupLinkSchema = new mongoose.Schema({
 	_id: { type: String, required: true },
 	jiraName: { type: String, required: true },
-	discordChannelId: { type: string, required: true },
+	discordChannelId: { type: String, required: true },
 	baseRole: { type: Boolean, default: false },
 });
 
