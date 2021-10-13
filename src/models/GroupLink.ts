@@ -5,7 +5,6 @@ import { conn2 } from '../index';
 interface GroupLink {
 	_id: string;
 	jiraName: string;
-	discordChannelId: string;
 	baseRole: boolean;
 }
 
@@ -13,7 +12,6 @@ interface GroupLink {
 const GroupLinkSchema = new mongoose.Schema({
 	_id: { type: String, required: true },
 	jiraName: { type: String, required: true },
-	discordChannelId: { type: String, required: true },
 	baseRole: { type: Boolean, default: false },
 });
 

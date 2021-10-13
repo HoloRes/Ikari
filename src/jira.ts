@@ -1,20 +1,22 @@
 /* eslint-disable no-console */
 // Imports
 import { Router, Request } from 'express';
-import { BaseGuildTextChannel, MessageEmbed } from 'discord.js';
+import {
+	BaseGuildTextChannel, MessageActionRow, MessageButton, MessageEmbed,
+} from 'discord.js';
 import axios from 'axios';
 
 // Models
 import IdLink from './models/IdLink';
 import Setting from './models/Setting';
-import GroupLink from './models/GroupLink';
 import { client, clipQueue } from './index';
 import clipRequest from './tools/clipper';
 import { components } from './types/jira';
+import RoleLink from './models/RoleLink';
+import StatusLink from './models/StatusLink';
 
 // Local files
 const config = require('../config.json');
-const strings = require('../strings.json');
 
 // Variables
 const url = `${config.jira.url}/rest/api/latest`;
@@ -60,6 +62,21 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 	if (projectsChannel?.type !== 'GUILD_TEXT') throw new Error('Channel is not a guild text channel');
 
 	if (req.body.webhookEvent && req.body.webhookEvent === 'jira:issue_created') {
+		const channelLink = await RoleLink.findById('translator').lean().exec()
+			.catch((err) => {
+				throw new Error(err);
+			});
+
+		// eslint-disable-next-line consistent-return
+		if (!channelLink) return console.warn('No channel link for translator found!');
+
+		const channel = await client.channels.fetch(channelLink.discordChannelId)
+			.catch((err) => {
+				throw new Error(err);
+			}) as unknown as BaseGuildTextChannel | null;
+
+		if (channel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${channelLink.discordChannelId} is not a guild text channel`);
+
 		const link = new IdLink({
 			jiraId: req.body.issue.id,
 			type: 'translation',
@@ -80,7 +97,16 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
 			.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
 
-		const msg = await projectsChannel.send({ embeds: [embed] })
+		const row = new MessageActionRow()
+			.addComponents(
+				new MessageButton()
+					.setCustomId(`assignToMe-${req.body.issue.key}`)
+					.setLabel('Assign to me')
+					.setStyle('SUCCESS')
+					.setEmoji('819518919739965490'),
+			);
+
+		const msg = await projectsChannel.send({ embeds: [embed], components: [row] })
 			.catch((err) => {
 				throw new Error(err);
 			});
@@ -96,18 +122,50 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			});
 		if (!link || link.finished) return;
 
-		const msg = await projectsChannel.messages.fetch(link.discordMessageId!)
+		const statusLink = await StatusLink.findById(req.body.issue.fields!.status.name).lean().exec()
+			.catch((err) => {
+				throw err;
+			});
+
+		// eslint-disable-next-line consistent-return
+		if (!statusLink) return console.warn(`No link found for: ${req.body.issue.fields!.status.name}`);
+
+		const channelLink = await RoleLink.findById(statusLink.role).lean().exec()
+			.catch((err) => {
+				throw err;
+			});
+
+		// eslint-disable-next-line consistent-return
+		if (!channelLink) return console.warn(`No channel link found for: ${req.body.issue.fields!.status.name}`);
+
+		const channel = await client.channels.fetch(channelLink.discordChannelId)
+			.catch((err) => {
+				throw new Error(err);
+			}) as unknown as BaseGuildTextChannel | null;
+
+		if (channel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${channelLink.discordChannelId} is not a guild text channel`);
+
+		const msg = await channel.messages.fetch(link.discordMessageId!)
 			.catch((err) => {
 				throw new Error(err);
 			});
 
 		if (req.body.transition && req.body.transition.transitionName === 'Assign') {
 			if (req.body.issue.fields!.assignee === null) {
+				const row = new MessageActionRow()
+					.addComponents(
+						new MessageButton()
+							.setCustomId(`assignToMe-${req.body.issue.key}`)
+							.setLabel('Assign to me')
+							.setStyle('SUCCESS')
+							.setEmoji('819518919739965490'),
+					);
+
 				const embed = msg.embeds[0].spliceFields(1, 1, {
 					name: 'Assignee',
 					value: 'Unassigned',
 				});
-				msg.edit({ embeds: [embed] });
+				msg.edit({ embeds: [embed], components: [row] });
 
 				const status = req.body.issue.fields!.status.name;
 				if (status === 'Open' || status === 'Rejected' || status === 'Being clipped' || status === 'Uploaded') return;
@@ -195,6 +253,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					});
 			});
 		} else {
+			// TODO: Figure out the new channel, delete old message, and create new one.
 			let languages = '';
 
 			// eslint-disable-next-line no-return-assign
@@ -214,375 +273,3 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 		}
 	}
 });
-
-/* eslint-disable */
-/*
-router.post('/webhook/artist', async (req, res) => {
-	if (req.query.token !== config.webhookSecret) {
-		res.status(403).end();
-		return;
-	}
-	res.status(200).end();
-
-	const artistsProjectsChannelSetting = await Setting.findById('artistsProjectsChannel').lean().exec()
-		.catch((err) => {
-			throw new Error(err);
-		});
-
-	if (!artistsProjectsChannelSetting) return;
-
-	const artistsProjectsChannel = await client.channels.fetch(artistsProjectsChannelSetting.value)
-		.catch((err) => {
-			throw new Error(err);
-		}) as unknown as BaseGuildTextChannel | null;
-
-	if (artistsProjectsChannel?.type !== 'GUILD_TEXT') throw new Error('Channel is not a guild text channel');
-
-	if (req.body.webhookEvent && req.body.webhookEvent === 'jira:issue_created') {
-		const link = new IdLink({
-			jiraId: req.body.issue.id,
-			type: 'artist',
-		});
-
-		const embed = new MessageEmbed()
-			.setTitle(`${req.body.issue.key}`)
-			.setColor('#0052cc')
-			.setDescription(req.body.issue.fields.summary || 'None')
-			.addField('Status', req.body.issue.fields.status.name, true)
-			.addField('Assignee', 'Unassigned', true)
-			.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
-
-		const msg = await artistsProjectsChannel.send({ embeds: [embed] })
-			.catch((err) => {
-				throw new Error(err);
-			});
-
-		link.discordMessageId = msg.id;
-		link.save((err) => {
-			if (err) throw err;
-		});
-
-		msg.react('819518919739965490');
-	} else {
-		const link = await IdLink.findOne({ jiraId: req.body.issue.id })
-			.exec()
-			.catch((err) => {
-				throw new Error(err);
-			});
-		if (!link) return;
-
-		const msg = await artistsProjectsChannel.messages.fetch(link.discordMessageId!)
-			.catch((err) => {
-				throw new Error(err);
-			});
-
-		if (req.body.transition && req.body.transition.transitionName === 'Assign') {
-			if (req.body.issue.fields.assignee === null) {
-				const embed = msg.embeds[0].spliceFields(1, 1, {
-					name: 'Assignee',
-					value: 'Unassigned',
-				});
-				msg.edit({ embeds: [embed] });
-
-				msg.react('819518919739965490');
-			} else {
-				const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
-					params: { key: req.body.issue.fields.assignee.key },
-					auth: {
-						username: config.oauthServer.clientId,
-						password: config.oauthServer.clientSecret,
-					},
-				}).catch((err) => {
-					console.log(err.response.data);
-					throw new Error(err);
-				});
-
-				const embed = msg.embeds[0].spliceFields(1, 1, {
-					name: 'Assignee',
-					value: `<@${user._id}>`,
-				});
-				msg.edit({ embeds: [embed] });
-				client.users.fetch(user._id)
-					.then((fetchedUser) => {
-						fetchedUser.send({ content: 'New assignment', embeds: [embed] });
-					}).catch(console.error);
-			}
-		} else if (req.body.transition && req.body.transition.transitionName === 'Finish') {
-			msg.delete();
-			link.finished = true;
-			link.save((err) => {
-				if (err) throw err;
-			});
-		} else {
-			const embed = new MessageEmbed()
-				.setTitle(`Project - ${req.body.issue.key}`)
-				.setColor('#0052cc')
-				.setDescription(req.body.issue.fields.summary || 'None')
-				.addField('Status', req.body.issue.fields.status.name)
-				.addField('Assignee', msg.embeds[0].fields[1].value)
-				.addField('Priority', req.body.issue.fields.priority.name)
-				.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
-
-			msg.edit({ embeds: [embed] });
-		}
-	}
-});
-
-// Event handlers
-// eslint-disable-next-line max-len
-export const messageReactionAddHandler = async (
-	messageReaction: Discord.MessageReaction | Discord.PartialMessageReaction,
-	receivedReactionUser: Discord.User | Discord.PartialUser,
-) => {
-	const reactionUser = await receivedReactionUser.fetch();
-	if (reactionUser.bot || messageReaction.emoji.id !== '819518919739965490') return;
-	const link = await IdLink.findOne({ discordMessageId: messageReaction.message.id }).lean().exec()
-		.catch((err) => {
-			messageReaction.users.remove(reactionUser);
-			reactionUser.send(strings.assignmentFail);
-			throw new Error(err);
-		});
-	if (!link) return;
-
-	const projectsChannelSetting = await Setting.findById('projectsChannel').lean().exec()
-		.catch((err) => {
-			messageReaction.users.remove(reactionUser);
-			reactionUser.send(strings.assignmentFail);
-			throw new Error(err);
-		});
-
-	const artistsProjectsChannelSetting = await Setting.findById('artistsProjectsChannel').lean().exec()
-		.catch((err) => {
-			messageReaction.users.remove(reactionUser);
-			reactionUser.send(strings.assignmentFail);
-			throw new Error(err);
-		});
-
-	if (!projectsChannelSetting || !artistsProjectsChannelSetting) return;
-
-	const projectsChannel = await client.channels.fetch(projectsChannelSetting.value)
-		.catch((err) => {
-			messageReaction.users.remove(reactionUser);
-			reactionUser.send(strings.assignmentFail);
-			throw new Error(err);
-		}) as unknown as BaseGuildTextChannel | null;
-
-	if (projectsChannel?.type !== 'GUILD_TEXT') throw new Error('Channel is not a guild text channel');
-
-	const artistsProjectsChannel = await client.channels.fetch(artistsProjectsChannelSetting.value)
-		.catch((err) => {
-			messageReaction.users.remove(reactionUser);
-			reactionUser.send(strings.assignmentFail);
-			throw new Error(err);
-		}) as unknown as BaseGuildTextChannel | null;
-
-	if (artistsProjectsChannel?.type !== 'GUILD_TEXT') throw new Error('Channel is not a guild text channel');
-
-	const guild = await messageReaction.message.guild!.fetch();
-	const member = await guild.members.fetch(reactionUser);
-
-	if (link.type === 'translation') {
-		const msg = await projectsChannel.messages.fetch(link.discordMessageId!)
-			.catch((err) => {
-				messageReaction.users.remove(reactionUser);
-				reactionUser.send(strings.assignmentFail);
-				throw new Error(err);
-			});
-
-		const languages = msg.embeds[0].fields[3].value.split(', ');
-		let valid = false;
-
-		const status = msg.embeds[0].fields[0].value;
-
-		if (status === 'Translating') {
-			const roles = await Promise.all(languages.map(async (language) => {
-				// @ts-expect-error
-				const { _id: discordId } = await GroupLink.findOne({ jiraName: `Translator - ${language}` })
-					.exec()
-					.catch((err) => {
-						messageReaction.users.remove(reactionUser);
-						reactionUser.send(strings.assignmentFail);
-						throw new Error(err);
-					});
-				return member.roles.cache.has(discordId);
-			}));
-			valid = roles.includes(true);
-		} else if (status === 'Translation Check') {
-			const roles = await Promise.all(languages.map(async (language) => {
-				// @ts-expect-error
-				const { _id: discordId } = await GroupLink.findOne({ jiraName: `Translation Checker - ${language}` })
-					.exec()
-					.catch((err) => {
-						messageReaction.users.remove(reactionUser);
-						reactionUser.send(strings.assignmentFail);
-						throw new Error(err);
-					});
-				return member.roles.cache.has(discordId);
-			}));
-			valid = roles.includes(true);
-		} else if (status === 'Proofreading') {
-			// @ts-expect-error
-			const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Proofreader' })
-				.exec()
-				.catch((err) => {
-					messageReaction.users.remove(reactionUser);
-					reactionUser.send(strings.assignmentFail);
-					throw new Error(err);
-				});
-			valid = member.roles.cache.has(discordId);
-		} else if (status === 'Subbing') {
-			// @ts-expect-error
-			const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Subtitler' })
-				.exec()
-				.catch((err) => {
-					messageReaction.users.remove(reactionUser);
-					reactionUser.send(strings.assignmentFail);
-					throw new Error(err);
-				});
-			valid = member.roles.cache.has(discordId);
-		} else if (status === 'PreQC') {
-			// @ts-expect-error
-			const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Pre-Quality Control' })
-				.exec()
-				.catch((err) => {
-					messageReaction.users.remove(reactionUser);
-					reactionUser.send(strings.assignmentFail);
-					throw new Error(err);
-				});
-			valid = member.roles.cache.has(discordId);
-		} else if (status === 'Video Editing') {
-			// @ts-expect-error
-			const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Video Editor' })
-				.exec()
-				.catch((err) => {
-					messageReaction.users.remove(reactionUser);
-					reactionUser.send(strings.assignmentFail);
-					throw new Error(err);
-				});
-			valid = member.roles.cache.has(discordId);
-		} else if (status === 'Quality Control') {
-			// @ts-expect-error
-			const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Quality Control' })
-				.exec()
-				.catch((err) => {
-					messageReaction.users.remove(reactionUser);
-					reactionUser.send(strings.assignmentFail);
-					throw new Error(err);
-				});
-			valid = member.roles.cache.has(discordId);
-		}
-
-		if (!valid) {
-			await messageReaction.users.remove(reactionUser);
-			await reactionUser.send(strings.assignmentNotPossible);
-		} else {
-			const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
-				params: { id: reactionUser.id },
-				auth: {
-					username: config.oauthServer.clientId,
-					password: config.oauthServer.clientSecret,
-				},
-			})
-				.catch((err) => {
-					reactionUser.send(strings.assignmentFail);
-					console.log(err.response.data);
-					throw new Error(err);
-				});
-
-			const embed = msg.embeds[0].spliceFields(1, 1, {
-				name: 'Assignee',
-				value: `<@${reactionUser.id}>`,
-			});
-
-			if (!user) {
-				await messageReaction.users.remove(reactionUser);
-				await reactionUser.send(strings.noJiraAccount);
-			} else {
-				axios.put(`${url}/issue/${link.jiraId}/assignee`, {
-					name: user.username,
-				}, {
-					auth: {
-						username: config.jira.username,
-						password: config.jira.password,
-					},
-				})
-					.then(() => {
-						msg.edit({ embeds: [embed] });
-						msg.reactions.removeAll();
-						reactionUser.send({ content: 'New assignment', embeds: [embed] });
-					})
-					.catch((err) => {
-						messageReaction.users.remove(reactionUser);
-						reactionUser.send(strings.assignmentFail);
-						console.log(err.response.data);
-						throw new Error(err);
-					});
-			}
-		}
-	} else if (link.type === 'artist') {
-		const msg = await artistsProjectsChannel.messages.fetch(link.discordMessageId!)
-			.catch((err) => {
-				messageReaction.users.remove(reactionUser);
-				reactionUser.send(strings.assignmentFail);
-				throw new Error(err);
-			});
-
-		// @ts-expect-error
-		const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Artist' })
-			.exec()
-			.catch((err) => {
-				messageReaction.users.remove(reactionUser);
-				reactionUser.send(strings.assignmentFail);
-				throw new Error(err);
-			});
-		if (member.roles.cache.has(discordId)) {
-			const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
-				params: { id: reactionUser.id },
-				auth: {
-					username: config.oauthServer.clientId,
-					password: config.oauthServer.clientSecret,
-				},
-			})
-				.catch((err) => {
-					messageReaction.users.remove(reactionUser);
-					reactionUser.send(strings.assignmentFail);
-					console.log(err.response.data);
-					throw new Error(err);
-				});
-
-			const embed = msg.embeds[0].spliceFields(1, 1, {
-				name: 'Assignee',
-				value: `<@${reactionUser.id}>`,
-			});
-
-			if (!user) {
-				await messageReaction.users.remove(reactionUser);
-				await reactionUser.send(strings.noJiraAccount);
-			} else {
-				await axios.put(`${url}/issue/${link.jiraId}/assignee`, {
-					name: user.username,
-				}, {
-					auth: {
-						username: config.jira.username,
-						password: config.jira.password,
-					},
-				})
-					.then(() => {
-						msg.edit({ embeds: [embed] });
-						msg.reactions.removeAll();
-						reactionUser.send({ content: 'New assignment', embeds: [embed] });
-					})
-					.catch((err) => {
-						messageReaction.users.remove(reactionUser);
-						reactionUser.send(strings.assignmentFail);
-						console.log(err.response.data);
-						throw new Error(err);
-					});
-			}
-		} else {
-			await messageReaction.users.remove(reactionUser);
-			await reactionUser.send(strings.assignmentNotPossibleArtist);
-		}
-	}
-};
- */
