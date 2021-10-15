@@ -19,17 +19,9 @@ export const clipQueue = queue({ autostart: true, concurrency: 1, timeout: undef
 // Pre-init
 // TODO: Add Sentry and Loki
 // Mongoose
-export const conn1 = mongoose.createConnection(`mongodb+srv://${config.mongodb.username}:${config.mongodb.password}@${config.mongodb.host}/${config.mongodb.database}`, {
-	useNewUrlParser: true,
-	useUnifiedTopology: true,
-	useFindAndModify: false,
-});
+export const conn1 = mongoose.createConnection(`mongodb+srv://${config.mongodb.username}:${config.mongodb.password}@${config.mongodb.host}/${config.mongodb.database}`);
 
-export const conn2 = mongoose.createConnection(`mongodb+srv://${config.mongoDbOauth.username}:${config.mongoDbOauth.password}@${config.mongoDbOauth.host}/${config.mongoDbOauth.database}`, {
-	useNewUrlParser: true,
-	useUnifiedTopology: true,
-	useFindAndModify: false,
-});
+export const conn2 = mongoose.createConnection(`mongodb+srv://${config.mongoDbOauth.username}:${config.mongoDbOauth.password}@${config.mongoDbOauth.host}/${config.mongoDbOauth.database}`);
 
 // Jira
 export const jiraClient = new Version2Client({
@@ -143,7 +135,5 @@ client.on('messageCreate', (message) => {
 client.on('interactionCreate', async (interaction) => {
 	if (interaction.isCommand()) commandInteractionHandler(interaction);
 });
-
-// client.on('messageReactionAdd', jira.messageReactionAddHandler);
 
 client.login(config.discord.authToken);

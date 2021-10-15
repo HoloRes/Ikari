@@ -4,7 +4,7 @@ import { Router, Request } from 'express';
 import {
 	BaseGuildTextChannel, MessageActionRow, MessageButton, MessageEmbed,
 } from 'discord.js';
-import axios from 'axios';
+import axios, { AxiosResponse } from 'axios';
 
 // Models
 import IdLink from './models/IdLink';
@@ -181,7 +181,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				}).catch((err) => {
 					console.log(err.response.data);
 					throw new Error(err);
-				});
+				}) as AxiosResponse<any>;
 
 				const embed = msg.embeds[0].spliceFields(1, 1, {
 					name: 'Assignee',
