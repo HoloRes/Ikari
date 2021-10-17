@@ -133,7 +133,7 @@ client.on('messageCreate', (message) => {
 });
 
 client.on('interactionCreate', async (interaction) => {
-	if (interaction.isCommand()) commandInteractionHandler(interaction);
+	if (interaction.isCommand()) await commandInteractionHandler(interaction);
 });
 
 client.login(config.discord.authToken);

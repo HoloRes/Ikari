@@ -8,8 +8,7 @@ import axios, { AxiosResponse } from 'axios';
 
 // Models
 import IdLink from './models/IdLink';
-import Setting from './models/Setting';
-import { client, clipQueue } from './index';
+import { client, clipQueue, jiraClient } from './index';
 import clipRequest from './tools/clipper';
 import { components } from './types/jira';
 import RoleLink from './models/RoleLink';
@@ -17,9 +16,6 @@ import StatusLink from './models/StatusLink';
 
 // Local files
 const config = require('../config.json');
-
-// Variables
-const url = `${config.jira.url}/rest/api/latest`;
 
 // Init
 // eslint-disable-next-line import/prefer-default-export
@@ -47,20 +43,6 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 	}
 	res.status(200).end();
 
-	const projectsChannelSetting = await Setting.findById('projectsChannel').lean().exec()
-		.catch((err) => {
-			throw new Error(err);
-		});
-
-	if (!projectsChannelSetting) return;
-
-	const projectsChannel = await client.channels.fetch(projectsChannelSetting.value)
-		.catch((err) => {
-			throw new Error(err);
-		}) as unknown as BaseGuildTextChannel | null;
-
-	if (projectsChannel?.type !== 'GUILD_TEXT') throw new Error('Channel is not a guild text channel');
-
 	if (req.body.webhookEvent && req.body.webhookEvent === 'jira:issue_created') {
 		const channelLink = await RoleLink.findById('translator').lean().exec()
 			.catch((err) => {
@@ -80,6 +62,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 		const link = new IdLink({
 			jiraId: req.body.issue.id,
 			type: 'translation',
+			status: req.body.issue.fields!.status.name,
 		});
 
 		let languages = '';
@@ -90,7 +73,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 		const embed = new MessageEmbed()
 			.setTitle(`${req.body.issue.key}`)
 			.setColor('#0052cc')
-			.setDescription(req.body.issue.fields!.summary || 'None')
+			.setDescription(req.body.issue.fields!.summary || 'No description available')
 			.addField('Status', req.body.issue.fields!.status.name, true)
 			.addField('Assignee', 'Unassigned', true)
 			.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
@@ -100,13 +83,13 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 		const row = new MessageActionRow()
 			.addComponents(
 				new MessageButton()
-					.setCustomId(`assignToMe-${req.body.issue.key}`)
+					.setCustomId(`assignToMe:${req.body.issue.key}`)
 					.setLabel('Assign to me')
 					.setStyle('SUCCESS')
 					.setEmoji('819518919739965490'),
 			);
 
-		const msg = await projectsChannel.send({ embeds: [embed], components: [row] })
+		const msg = await channel.send({ embeds: [embed], components: [row] })
 			.catch((err) => {
 				throw new Error(err);
 			});
@@ -122,13 +105,13 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			});
 		if (!link || link.finished) return;
 
-		const statusLink = await StatusLink.findById(req.body.issue.fields!.status.name).lean().exec()
+		const statusLink = await StatusLink.findById(link.status).lean().exec()
 			.catch((err) => {
 				throw err;
 			});
 
 		// eslint-disable-next-line consistent-return
-		if (!statusLink) return console.warn(`No link found for: ${req.body.issue.fields!.status.name}`);
+		if (!statusLink) return console.warn(`No link found for: ${link.status}`);
 
 		const channelLink = await RoleLink.findById(statusLink.role).lean().exec()
 			.catch((err) => {
@@ -136,7 +119,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			});
 
 		// eslint-disable-next-line consistent-return
-		if (!channelLink) return console.warn(`No channel link found for: ${req.body.issue.fields!.status.name}`);
+		if (!channelLink) return console.warn(`No channel link found for: ${link.status}`);
 
 		const channel = await client.channels.fetch(channelLink.discordChannelId)
 			.catch((err) => {
@@ -155,7 +138,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				const row = new MessageActionRow()
 					.addComponents(
 						new MessageButton()
-							.setCustomId(`assignToMe-${req.body.issue.key}`)
+							.setCustomId(`assignToMe:${req.body.issue.key}`)
 							.setLabel('Assign to me')
 							.setStyle('SUCCESS')
 							.setEmoji('819518919739965490'),
@@ -164,7 +147,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				const embed = msg.embeds[0].spliceFields(1, 1, {
 					name: 'Assignee',
 					value: 'Unassigned',
-				});
+				} as any);
 				msg.edit({ embeds: [embed], components: [row] });
 
 				const status = req.body.issue.fields!.status.name;
@@ -186,7 +169,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				const embed = msg.embeds[0].spliceFields(1, 1, {
 					name: 'Assignee',
 					value: `<@${user._id}>`,
-				});
+				} as any);
 				msg.edit({ embeds: [embed] });
 				client.users.fetch(user._id)
 					.then((fetchedUser) => {
@@ -211,65 +194,109 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					req.body.issue.fields!.summary,
 					req.body.issue.fields![config.jira.fields.fileExt].value.toLowerCase(),
 					req.body.issue.fields![config.jira.fields.extraArgs],
-				])
-					.then(() => {
-						axios.post(`${url}/issue/${link.jiraId}/transitions`, {
-							transition: {
-								id: '41',
-							},
-						}, {
-							auth: {
-								username: config.jira.username,
-								password: config.jira.password,
-							},
-						})
-							.catch((err) => {
-								console.log(err);
-								throw new Error(err);
-							});
-						cb!();
-					}, () => {
-						axios.post(`${url}/issue/${link.jiraId}/transitions`, {
-							transition: {
-								id: '121',
-							},
-						}, {
-							auth: {
-								username: config.jira.username,
-								password: config.jira.password,
-							},
-						})
-							.catch((err) => {
-								console.log(err);
-								clipQueue.shift();
-								clipQueue.start();
-								throw new Error(err);
-							});
-						cb!();
-					})
-					.catch((err) => {
-						console.log(err.response.data);
+				]).then(async () => {
+					await jiraClient.issues.doTransition({
+						issueIdOrKey: link.jiraId!,
+						transition: { id: '41' },
+					}).catch((err) => {
+						console.log(err);
+						clipQueue.shift();
+						clipQueue.start();
 						throw new Error(err);
 					});
+					cb!();
+				}, async () => {
+					await jiraClient.issues.doTransition({
+						issueIdOrKey: link.jiraId!,
+						transition: { id: '121' },
+					}).catch((err) => {
+						console.log(err);
+						clipQueue.shift();
+						clipQueue.start();
+						throw new Error(err);
+					});
+					cb!();
+				}).catch((err) => {
+					console.log(err.response.data);
+					throw new Error(err);
+				});
 			});
 		} else {
-			// TODO: Figure out the new channel, delete old message, and create new one.
 			let languages = '';
 
 			// eslint-disable-next-line no-return-assign
 			req.body.issue.fields![config.jira.fields.langs].map((language: JiraField) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
 
-			const embed = new MessageEmbed()
-				.setTitle(`${req.body.issue.key}`)
-				.setColor('#0052cc')
-				.setDescription(req.body.issue.fields!.summary || 'None')
-				.addField('Status', req.body.issue.fields!.status.name, true)
-				.addField('Assignee', msg.embeds[0].fields[1].value, true)
-				.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-				.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
-				.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
+			const row = new MessageActionRow()
+				.addComponents(
+					new MessageButton()
+						.setCustomId(`assignToMe:${req.body.issue.key}`)
+						.setLabel('Assign to me')
+						.setStyle('SUCCESS')
+						.setEmoji('819518919739965490'),
+				);
 
-			msg.edit({ embeds: [embed] });
+			if (req.body.issue.fields!.status.name === link.status) {
+				const embed = new MessageEmbed()
+					.setTitle(`${req.body.issue.key}`)
+					.setColor('#0052cc')
+					.setDescription(req.body.issue.fields!.summary || 'No description available')
+					.addField('Status', req.body.issue.fields!.status.name, true)
+					.addField('Assignee', msg.embeds[0].fields[1].value, true)
+					.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
+					.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
+					.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
+
+				msg.edit({
+					embeds: [embed],
+					components: (req.body.issue.fields!.assignee === null ? [row] : []),
+				});
+			} else {
+				// eslint-disable-next-line max-len
+				const newChannelLink = await RoleLink.findById(req.body.issue.fields!.status.name).lean().exec()
+					.catch((err) => {
+						throw err;
+					});
+
+				// eslint-disable-next-line consistent-return
+				if (!newChannelLink) return console.warn(`No channel link found for: ${req.body.issue.fields!.status.name}`);
+
+				const newChannel = await client.channels.fetch(newChannelLink.discordChannelId)
+					.catch((err) => {
+						throw new Error(err);
+					}) as unknown as BaseGuildTextChannel | null;
+
+				if (newChannel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${channelLink.discordChannelId} is not a guild text channel`);
+
+				const embed = new MessageEmbed()
+					.setTitle(`${req.body.issue.key}`)
+					.setColor('#0052cc')
+					.setDescription(req.body.issue.fields!.summary || 'No description available')
+					.addField('Status', req.body.issue.fields!.status.name, true)
+					.addField('Assignee', 'Unassigned', true)
+					.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
+					.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
+					.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
+
+				const newMsg = await newChannel.send({ embeds: [embed], components: [row] });
+
+				link.discordMessageId = newMsg.id;
+				link.status = req.body.issue.fields!.status.name;
+
+				await link.save();
+
+				msg.delete();
+			}
 		}
 	}
 });
+
+router.post('/webhook/artist', (req, res) => {
+	if (req.query.token !== config.webhookSecret) {
+		res.status(403).end();
+		return;
+	}
+	res.status(200).end();
+});
+
+// TODO: Timer for auto assignment and stale

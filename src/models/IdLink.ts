@@ -6,6 +6,7 @@ interface Project {
 	jiraId?: string;
 	discordMessageId?: string;
 	type: 'translation' | 'artist';
+	status: string;
 	finished: boolean;
 }
 
@@ -14,6 +15,7 @@ const ProjectSchema = new mongoose.Schema({
 	jiraId: String,
 	discordMessageId: String,
 	type: { type: String, enum: ['translation', 'artist'], required: true },
+	status: { type: String, required: true },
 	finished: { type: Boolean, default: false },
 });
 
