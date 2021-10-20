@@ -10,7 +10,7 @@ const strings = require('../../strings.json');
 export default async function buttonInteractionHandler(interaction: Discord.ButtonInteraction) {
 	// TODO: Add interaction handlers for LQC, SQC and artist
 	if (interaction.customId.startsWith('assignToMe:')) {
-		await interaction.deferReply();
+		await interaction.deferReply({ ephemeral: true });
 		const issueId = interaction.customId.split(':')[1];
 
 		const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
