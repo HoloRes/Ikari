@@ -133,6 +133,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				throw new Error(err);
 			});
 
+		// TODO: Add support for SQC + LQC
 		if (req.body.transition && req.body.transition.transitionName === 'Assign') {
 			if (req.body.issue.fields!.assignee === null) {
 				const row = new MessageActionRow()
@@ -222,6 +223,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				});
 			});
 		} else {
+			// TODO: Add support for SQC + LQC
 			let languages = '';
 
 			// eslint-disable-next-line no-return-assign
