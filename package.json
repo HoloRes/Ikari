@@ -21,7 +21,7 @@
     "axios": "^0.21.1",
     "discord.js": "github:discordjs/discord.js",
     "express": "^4.17.1",
-    "mongoose": "^5.11.18",
+    "mongoose": "^6.0.0",
     "nanoid": "^3.1.20",
     "queue": "^6.0.2",
     "webdav": "^4.3.0"
