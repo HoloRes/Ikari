@@ -134,7 +134,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			});
 
 		// TODO: Add support for SQC + LQC
-		if (req.body.transition && req.body.transition.transitionName === 'Assign') {
+		const { transitionName } = req.body.transition;
+
+		if (req.body.transition && transitionName === 'Assign') {
 			if (req.body.issue.fields!.assignee === null) {
 				const row = new MessageActionRow()
 					.addComponents(
@@ -149,12 +151,8 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					name: 'Assignee',
 					value: 'Unassigned',
 				} as any);
-				msg.edit({ embeds: [embed], components: [row] });
-
 				const status = req.body.issue.fields!.status.name;
-				if (status === 'Open' || status === 'Rejected' || status === 'Being clipped' || status === 'Uploaded') return;
-
-				msg.react('819518919739965490');
+				msg.edit({ embeds: [embed], components: (status === 'Open' || status === 'Rejected' || status === 'Being clipped' || status === 'Uploaded') ? [] : [row] });
 			} else {
 				const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
 					params: { key: req.body.issue.fields!.assignee.key },
@@ -177,13 +175,13 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						fetchedUser.send({ content: 'New assignment', embeds: [embed] });
 					}).catch(console.error);
 			}
-		} else if (req.body.transition && req.body.transition.transitionName === 'Finish') {
+		} else if (req.body.transition && transitionName === 'Finish') {
 			msg.delete();
 			link.finished = true;
 			link.save((err) => {
 				if (err) throw err;
 			});
-		} else if (req.body.transition && req.body.transition.transitionName === 'Send to Ikari') {
+		} else if (req.body.transition && transitionName === 'Send to Ikari') {
 			const videoRegex = /^(http(s)?:\/\/)?(www\.)?youtu((\.be\/)|(be\.com\/watch\?v=))[0-z_-]{11}$/g;
 			const videoType = videoRegex.test(req.body.issue.fields![config.jira.fields.videoLink]) ? 'youtube' : 'other';
 			console.log('REQ RECEIVED');
@@ -222,6 +220,100 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					throw new Error(err);
 				});
 			});
+		} else if (req.body.transition && transitionName === 'Assign LQC') {
+			if (req.body.issue.fields![config.jira.fields.LQCAssignee] === null) {
+				const row = new MessageActionRow()
+					.addComponents(
+						new MessageButton()
+							.setCustomId(`assignLQCToMe:${req.body.issue.key}`)
+							.setLabel('Assign to me')
+							.setStyle('SUCCESS')
+							.setEmoji('819518919739965490'),
+					);
+				if (req.body.issue.fields![config.jira.fields.SubQCAssignee] === null) {
+					row.addComponents(
+						new MessageButton()
+							.setCustomId(`assignSubQCToMe:${req.body.issue.key}`)
+							.setLabel('Assign to me')
+							.setStyle('SUCCESS')
+							.setEmoji('819518919739965490'),
+					);
+				}
+
+				const embed = msg.embeds[0].spliceFields(1, 1, {
+					name: 'LQC Assignee',
+					value: 'Unassigned',
+				} as any);
+				msg.edit({ embeds: [embed], components: [row] });
+			} else {
+				const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+					params: { key: req.body.issue.fields![config.jira.fields.LQCAssignee].key },
+					auth: {
+						username: config.oauthServer.clientId,
+						password: config.oauthServer.clientSecret,
+					},
+				}).catch((err) => {
+					console.log(err.response.data);
+					throw new Error(err);
+				}) as AxiosResponse<any>;
+
+				const embed = msg.embeds[0].spliceFields(1, 1, {
+					name: 'LQC Assignee',
+					value: `<@${user._id}>`,
+				} as any);
+				msg.edit({ embeds: [embed] });
+				client.users.fetch(user._id)
+					.then((fetchedUser) => {
+						fetchedUser.send({ content: 'New assignment', embeds: [embed] });
+					}).catch(console.error);
+			}
+		} else if (req.body.transition && transitionName === 'Assign SubQC') {
+			if (req.body.issue.fields![config.jira.fields.SubQCAssignee] === null) {
+				const row = new MessageActionRow()
+					.addComponents(
+						new MessageButton()
+							.setCustomId(`assignSubQCToMe:${req.body.issue.key}`)
+							.setLabel('Assign to me')
+							.setStyle('SUCCESS')
+							.setEmoji('819518919739965490'),
+					);
+				if (req.body.issue.fields![config.jira.fields.LQCAssignee] === null) {
+					row.addComponents(
+						new MessageButton()
+							.setCustomId(`assignLQCToMe:${req.body.issue.key}`)
+							.setLabel('Assign to me')
+							.setStyle('SUCCESS')
+							.setEmoji('819518919739965490'),
+					);
+				}
+
+				const embed = msg.embeds[0].spliceFields(2, 2, {
+					name: 'SubQC Assignee',
+					value: 'Unassigned',
+				} as any);
+				msg.edit({ embeds: [embed], components: [row] });
+			} else {
+				const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+					params: { key: req.body.issue.fields![config.jira.fields.SubQCAssignee].key },
+					auth: {
+						username: config.oauthServer.clientId,
+						password: config.oauthServer.clientSecret,
+					},
+				}).catch((err) => {
+					console.log(err.response.data);
+					throw new Error(err);
+				}) as AxiosResponse<any>;
+
+				const embed = msg.embeds[0].spliceFields(2, 2, {
+					name: 'SubQC Assignee',
+					value: `<@${user._id}>`,
+				} as any);
+				msg.edit({ embeds: [embed] });
+				client.users.fetch(user._id)
+					.then((fetchedUser) => {
+						fetchedUser.send({ content: 'New assignment', embeds: [embed] });
+					}).catch(console.error);
+			}
 		} else {
 			// TODO: Add support for SQC + LQC
 			let languages = '';

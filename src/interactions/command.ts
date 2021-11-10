@@ -4,7 +4,7 @@ import { components as JiraComponents } from '../types/jira';
 import { jiraClient } from '../index';
 
 // Config
-const config = require('../config.json');
+const config = require('../../config.json');
 
 // eslint-disable-next-line consistent-return
 export default async function commandInteractionHandler(interaction: Discord.CommandInteraction) {
@@ -15,9 +15,11 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 
 		const issue = await jiraClient.issues.getIssue({ issueIdOrKey: key })
 			.catch(async (err) => {
-				console.error(err);
+				console.error(JSON.stringify(err, null, 2));
+				if (err.response) console.error(err.response.body);
 				await interaction.editReply('Something went wrong, please try again later.');
 			});
+		console.log(issue);
 
 		if (!issue) {
 			return interaction.editReply('Issue not found.');

@@ -6,7 +6,7 @@ import mongoose from 'mongoose';
 import express from 'express';
 import queue from 'queue';
 import * as util from 'util';
-import { Version2Client, Config as JiraConfig } from 'jira.js';
+import { Version2Client } from 'jira.js';
 import helmet from 'helmet';
 
 // Config
@@ -26,11 +26,13 @@ export const conn2 = mongoose.createConnection(`mongodb+srv://${config.mongoDbOa
 // Jira
 export const jiraClient = new Version2Client({
 	host: config.jira.url,
-	credentials: {
-		username: config.jira.username,
-		password: config.jira.password,
+	authentication: {
+		basic: {
+			username: config.jira.username,
+			password: config.jira.password,
+		},
 	},
-} as JiraConfig);
+});
 
 // Init
 /* eslint-disable */

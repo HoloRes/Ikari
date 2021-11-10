@@ -63,7 +63,7 @@ dev:
   - imageSelector: ${IMAGE} # Select the Pod that runs our `${IMAGE}`
     # Since the `${IMAGE}` used to start our main application pod may be distroless or not have any dev tooling, let's replace it with a dev-optimized image
     # DevSpace provides a sample image here but you can use any image for your specific needs
-    replaceImage: node:16-alpine
+    replaceImage: node:16-buster-slim
     # Besides replacing the container image, let's also apply some patches to the `spec` of our Pod
     # We are overwriting `command` + `args` for the first container in our selected Pod, so it starts with `sleep 9999999`
     # Using `sleep 9999999` as PID 1 (instead of the regular ENTRYPOINT), allows you to start the application manually
