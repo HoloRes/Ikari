@@ -8,6 +8,7 @@ const config = require('../../config.json');
 
 // eslint-disable-next-line consistent-return
 export default async function commandInteractionHandler(interaction: Discord.CommandInteraction) {
+	// TODO: Add userinfo command and settings command (limit this one to team lead and devs)
 	if (interaction.commandName === 'project') {
 		await interaction.deferReply();
 
