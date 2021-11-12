@@ -133,7 +133,6 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				throw new Error(err);
 			});
 
-		// TODO: Add support for SQC + LQC
 		const { transitionName } = req.body.transition;
 
 		if (req.body.transition && transitionName === 'Assign') {
@@ -331,21 +330,46 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				);
 
 			if (req.body.issue.fields!.status.name === link.status) {
-				const embed = new MessageEmbed()
-					.setTitle(`${req.body.issue.key}`)
-					.setColor('#0052cc')
-					.setDescription(req.body.issue.fields!.summary || 'No description available')
-					.addField('Status', req.body.issue.fields!.status.name, true)
-					.addField('Assignee', msg.embeds[0].fields[1].value, true)
-					.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-					.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
-					.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
+				if (link.status === 'Sub QC/Language QC') {
+					const newRow = new MessageActionRow();
 
-				msg.edit({
-					embeds: [embed],
-					components: (req.body.issue.fields!.assignee === null ? [row] : []),
-				});
+					// TODO: Add buttons based on assignee status
+
+					// TODO: Add done to LQC and SubQC field based on Jira api field value
+					const embed = new MessageEmbed()
+						.setTitle(req.body.issue.key!)
+						.setColor('#0052cc')
+						.setDescription(req.body.issue.fields!.summary || 'No description available')
+						.addField('Status', req.body.issue.fields!.status.name, true)
+						.addField('LQC Assignee', msg.embeds[0].fields[1].value, true)
+						.addField('SubQC Assignee', msg.embeds[0].fields[2].value, true)
+						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
+						.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
+						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
+
+					msg.edit({
+						embeds: [embed],
+						// TODO: Only add component when there's a role to be assigned
+						components: [newRow],
+					});
+				} else {
+					const embed = new MessageEmbed()
+						.setTitle(req.body.issue.key!)
+						.setColor('#0052cc')
+						.setDescription(req.body.issue.fields!.summary || 'No description available')
+						.addField('Status', req.body.issue.fields!.status.name, true)
+						.addField('Assignee', msg.embeds[0].fields[1].value, true)
+						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
+						.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
+						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
+
+					msg.edit({
+						embeds: [embed],
+						components: (req.body.issue.fields!.assignee === null ? [row] : []),
+					});
+				}
 			} else {
+				// TODO: Handle SubQC + LQC
 				// eslint-disable-next-line max-len
 				const newChannelLink = await RoleLink.findById(req.body.issue.fields!.status.name).lean().exec()
 					.catch((err) => {
