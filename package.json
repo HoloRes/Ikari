@@ -30,7 +30,6 @@
     "jira.js": "^2.7.0",
     "mongoose": "^6.0.11",
     "nanoid": "^3.1.20",
-    "queue": "^6.0.2",
     "utf-8-validate": "^5.0.5",
     "webdav": "^4.3.0"
   },

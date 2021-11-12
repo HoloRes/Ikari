@@ -4,7 +4,6 @@ import { REST as DiscordREST } from '@discordjs/rest';
 import { Routes } from 'discord-api-types/v9';
 import mongoose from 'mongoose';
 import express from 'express';
-import queue from 'queue';
 import * as util from 'util';
 import { Version2Client } from 'jira.js';
 import helmet from 'helmet';
@@ -12,9 +11,6 @@ import helmet from 'helmet';
 // Config
 // eslint-disable-next-line import/order
 const config = require('../config.json');
-
-// Variables
-export const clipQueue = queue({ autostart: true, concurrency: 1, timeout: undefined });
 
 // Pre-init
 // TODO: Add Sentry and Loki
@@ -73,11 +69,10 @@ client.on('messageCreate', (message) => {
 	const args = cmd.slice(1);
 	// Debug commands
 	switch (cmd[0]) {
-		case 'queueState': {
-			message.channel.send(clipQueue.length.toString(10));
-			break;
-		}
 		case 'eval': {
+			// Hardcode to only allow GoldElysium
+			if (message.author.id !== '515984841716793344') return;
+
 			// eslint-disable-next-line no-inner-declarations
 			function clean(text: string | any) {
 				if (typeof (text) === 'string') return text.replace(/'/g, `\`${String.fromCharCode(8203)}`).replace(/@/g, `@${String.fromCharCode(8203)}`);
@@ -97,6 +92,7 @@ client.on('messageCreate', (message) => {
 			break;
 		}
 		case 'slashCommandSetup': {
+			// Hardcode to only allow GoldElysium
 			if (message.author.id !== '515984841716793344') return;
 			(async () => {
 				try {
