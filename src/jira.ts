@@ -8,11 +8,10 @@ import axios, { AxiosResponse } from 'axios';
 
 // Models
 import IdLink from './models/IdLink';
-import { client, clipQueue, jiraClient } from './index';
-import clipRequest from './tools/clipper';
+import { client } from './index';
 import { components } from './types/jira';
-import RoleLink from './models/RoleLink';
 import StatusLink from './models/StatusLink';
+import UserInfo from './models/UserInfo';
 
 // Local files
 const config = require('../config.json');
@@ -44,20 +43,20 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 	res.status(200).end();
 
 	if (req.body.webhookEvent && req.body.webhookEvent === 'jira:issue_created') {
-		const channelLink = await RoleLink.findById('translator').lean().exec()
+		const channelLink = await StatusLink.findById(req.body.issue.fields!.status.name).lean().exec()
 			.catch((err) => {
 				throw new Error(err);
 			});
 
 		// eslint-disable-next-line consistent-return
-		if (!channelLink) return console.warn('No channel link for translator found!');
+		if (!channelLink) return console.warn(`No channel link for ${req.body.issue.fields!.status.name} found!`);
 
-		const channel = await client.channels.fetch(channelLink.discordChannelId)
+		const channel = await client.channels.fetch(channelLink.channel)
 			.catch((err) => {
 				throw new Error(err);
 			}) as unknown as BaseGuildTextChannel | null;
 
-		if (channel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${channelLink.discordChannelId} is not a guild text channel`);
+		if (channel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${channelLink.channel} is not a guild text channel`);
 
 		const link = new IdLink({
 			jiraId: req.body.issue.id,
@@ -74,8 +73,8 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			.setTitle(`${req.body.issue.key}`)
 			.setColor('#0052cc')
 			.setDescription(req.body.issue.fields!.summary || 'No description available')
-			.addField('Status', req.body.issue.fields!.status.name, true)
-			.addField('Assignee', 'Unassigned', true)
+			.addField('Status', req.body.issue.fields!.status.name)
+			.addField('Assignee', 'Unassigned')
 			.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
 			.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
 			.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
@@ -113,7 +112,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 		// eslint-disable-next-line consistent-return
 		if (!statusLink) return console.warn(`No link found for: ${link.status}`);
 
-		const channelLink = await RoleLink.findById(statusLink.role).lean().exec()
+		const channelLink = await StatusLink.findById(req.body.issue.fields!.status.name).lean().exec()
 			.catch((err) => {
 				throw err;
 			});
@@ -121,12 +120,12 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 		// eslint-disable-next-line consistent-return
 		if (!channelLink) return console.warn(`No channel link found for: ${link.status}`);
 
-		const channel = await client.channels.fetch(channelLink.discordChannelId)
+		const channel = await client.channels.fetch(channelLink.channel)
 			.catch((err) => {
 				throw new Error(err);
 			}) as unknown as BaseGuildTextChannel | null;
 
-		if (channel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${channelLink.discordChannelId} is not a guild text channel`);
+		if (channel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${channelLink.channel} is not a guild text channel`);
 
 		const msg = await channel.messages.fetch(link.discordMessageId!)
 			.catch((err) => {
@@ -164,6 +163,29 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					throw new Error(err);
 				}) as AxiosResponse<any>;
 
+				let userDoc = await UserInfo.findById(user._id).exec();
+				if (!userDoc) {
+					userDoc = new UserInfo({
+						_id: user._id,
+					});
+				}
+				userDoc.isAssigned = true;
+				userDoc.lastAssigned = new Date();
+				// @ts-expect-error isAssigned possibly false
+				userDoc.assignedTo = req.body.issue.key;
+				link.lastUpdate = new Date();
+				// @ts-expect-error no overload match
+				userDoc.save((err) => {
+					if (err) {
+						console.error(err);
+					}
+				});
+				link.save((err) => {
+					if (err) {
+						console.error(err);
+					}
+				});
+
 				const embed = msg.embeds[0].spliceFields(1, 1, {
 					name: 'Assignee',
 					value: `<@${user._id}>`,
@@ -181,44 +203,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				if (err) throw err;
 			});
 		} else if (req.body.transition && transitionName === 'Send to Ikari') {
-			const videoRegex = /^(http(s)?:\/\/)?(www\.)?youtu((\.be\/)|(be\.com\/watch\?v=))[0-z_-]{11}$/g;
-			const videoType = videoRegex.test(req.body.issue.fields![config.jira.fields.videoLink]) ? 'youtube' : 'other';
-			console.log('REQ RECEIVED');
-			clipQueue.push((cb) => {
-				clipRequest([
-					videoType,
-					req.body.issue.fields![config.jira.fields.videoLink],
-					req.body.issue.fields![config.jira.fields.timestamps],
-					req.body.issue.fields!.summary,
-					req.body.issue.fields![config.jira.fields.fileExt].value.toLowerCase(),
-					req.body.issue.fields![config.jira.fields.extraArgs],
-				]).then(async () => {
-					await jiraClient.issues.doTransition({
-						issueIdOrKey: link.jiraId!,
-						transition: { id: '41' },
-					}).catch((err) => {
-						console.log(err);
-						clipQueue.shift();
-						clipQueue.start();
-						throw new Error(err);
-					});
-					cb!();
-				}, async () => {
-					await jiraClient.issues.doTransition({
-						issueIdOrKey: link.jiraId!,
-						transition: { id: '121' },
-					}).catch((err) => {
-						console.log(err);
-						clipQueue.shift();
-						clipQueue.start();
-						throw new Error(err);
-					});
-					cb!();
-				}).catch((err) => {
-					console.log(err.response.data);
-					throw new Error(err);
-				});
-			});
+			// eslint-disable-next-line max-len
+			// TODO: Add temporary message telling the user that this functionality is not implemented yet.
+			//       Also, immediately transition to next status
 		} else if (req.body.transition && transitionName === 'Assign LQC') {
 			if (req.body.issue.fields![config.jira.fields.LQCAssignee] === null) {
 				const row = new MessageActionRow()
@@ -255,6 +242,29 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					console.log(err.response.data);
 					throw new Error(err);
 				}) as AxiosResponse<any>;
+
+				let userDoc = await UserInfo.findById(user._id).exec();
+				if (!userDoc) {
+					userDoc = new UserInfo({
+						_id: user._id,
+					});
+				}
+				userDoc.isAssigned = true;
+				userDoc.lastAssigned = new Date();
+				// @ts-expect-error isAssigned possibly false
+				userDoc.assignedTo = req.body.issue.key;
+				link.lastUpdate = new Date();
+				// @ts-expect-error no overload match
+				userDoc.save((err) => {
+					if (err) {
+						console.error(err);
+					}
+				});
+				link.save((err) => {
+					if (err) {
+						console.error(err);
+					}
+				});
 
 				const embed = msg.embeds[0].spliceFields(1, 1, {
 					name: 'LQC Assignee',
@@ -302,6 +312,29 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					console.log(err.response.data);
 					throw new Error(err);
 				}) as AxiosResponse<any>;
+
+				let userDoc = await UserInfo.findById(user._id).exec();
+				if (!userDoc) {
+					userDoc = new UserInfo({
+						_id: user._id,
+					});
+				}
+				userDoc.isAssigned = true;
+				userDoc.lastAssigned = new Date();
+				// @ts-expect-error isAssigned possibly false
+				userDoc.assignedTo = req.body.issue.key;
+				link.lastUpdate = new Date();
+				// @ts-expect-error no overload match
+				userDoc.save((err) => {
+					if (err) {
+						console.error(err);
+					}
+				});
+				link.save((err) => {
+					if (err) {
+						console.error(err);
+					}
+				});
 
 				const embed = msg.embeds[0].spliceFields(2, 2, {
 					name: 'SubQC Assignee',
@@ -361,17 +394,17 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.addField('LQC Status',
 							(
 								// eslint-disable-next-line no-nested-ternary
-								(req.body.issue.fields![config.jira.fields.LQCSubQCFinished] as any[]).find((item) => item.value === 'LQC_done').length > 0 ? 'Done' : (
-									msg.embeds[0].fields[1].value === 'Unassigned' ? 'To do' : 'In progress'
-								)
-							), true)
+								(req.body.issue.fields![config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'LQC_done').length > 0 ? 'Done' : (
+									req.body.issue.fields![config.jira.fields.LQCAssignee] === null ? 'To do' : 'In progress'
+								) ?? 'To do'
+							))
 						.addField('SubQC Status',
 							(
 								// eslint-disable-next-line no-nested-ternary
-								(req.body.issue.fields![config.jira.fields.LQCSubQCFinished] as any[]).find((item) => item.value === 'Sub_QC_done').length > 0 ? 'Done' : (
-									msg.embeds[0].fields[1].value === 'Unassigned' ? 'To do' : 'In progress'
-								)
-							), true)
+								(req.body.issue.fields![config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done').length > 0 ? 'Done' : (
+									req.body.issue.fields![config.jira.fields.SubQCAssignee] === null ? 'To do' : 'In progress'
+								) ?? 'To do'
+							))
 						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
 						.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
 						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
@@ -385,8 +418,8 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.setTitle(req.body.issue.key!)
 						.setColor('#0052cc')
 						.setDescription(req.body.issue.fields!.summary || 'No description available')
-						.addField('Status', req.body.issue.fields!.status.name, true)
-						.addField('Assignee', msg.embeds[0].fields[1].value, true)
+						.addField('Status', req.body.issue.fields!.status.name)
+						.addField('Assignee', msg.embeds[0].fields[1].value)
 						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
 						.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
 						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
@@ -398,20 +431,20 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				}
 			} else {
 				// eslint-disable-next-line max-len
-				const newChannelLink = await RoleLink.findById(req.body.issue.fields!.status.name).lean().exec()
+				const newStatusLink = await StatusLink.findById(req.body.issue.fields!.status.name).lean().exec()
 					.catch((err) => {
 						throw err;
 					});
 
 				// eslint-disable-next-line consistent-return
-				if (!newChannelLink) return console.warn(`No channel link found for: ${req.body.issue.fields!.status.name}`);
+				if (!newStatusLink) return console.warn(`No channel link found for: ${req.body.issue.fields!.status.name}`);
 
-				const newChannel = await client.channels.fetch(newChannelLink.discordChannelId)
+				const newChannel = await client.channels.fetch(newStatusLink.channel)
 					.catch((err) => {
 						throw new Error(err);
 					}) as unknown as BaseGuildTextChannel | null;
 
-				if (newChannel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${channelLink.discordChannelId} is not a guild text channel`);
+				if (newChannel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${newStatusLink.channel} is not a guild text channel`);
 
 				if (req.body.issue.fields!.status.name === 'Sub QC/Language QC') {
 					const newRow = new MessageActionRow()
@@ -454,13 +487,27 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 					msg.delete();
 				} else {
-					// TODO: Handle return to older status and assignee auto hand off
+					let user: any | undefined;
+					if (req.body.issue.fields!.assignee !== null) {
+						const { data } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+							params: { key: req.body.issue.fields!.assignee.key },
+							auth: {
+								username: config.oauthServer.clientId,
+								password: config.oauthServer.clientSecret,
+							},
+						}).catch((err) => {
+							console.log(err.response.data);
+							throw new Error(err);
+						}) as AxiosResponse<any>;
+						user = data;
+					}
+
 					const embed = new MessageEmbed()
 						.setTitle(`${req.body.issue.key}`)
 						.setColor('#0052cc')
 						.setDescription(req.body.issue.fields!.summary || 'No description available')
-						.addField('Status', req.body.issue.fields!.status.name, true)
-						.addField('Assignee', 'Unassigned', true)
+						.addField('Status', req.body.issue.fields!.status.name)
+						.addField('Assignee', user ? `<@${user._id}>` : 'Unassigned')
 						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
 						.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
 						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
@@ -482,6 +529,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 	}
 });
 
+// TODO: Handle artist work
 router.post('/webhook/artist', (req, res) => {
 	if (req.query.token !== config.webhookSecret) {
 		res.status(403).end();
@@ -489,5 +537,7 @@ router.post('/webhook/artist', (req, res) => {
 	}
 	res.status(200).end();
 });
+
+// TODO: Create auto assign function
 
 // TODO: Timer for auto assignment and stale
