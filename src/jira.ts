@@ -225,7 +225,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					.addComponents(
 						new MessageButton()
 							.setCustomId(`assignLQCToMe:${req.body.issue.key}`)
-							.setLabel('Assign to me')
+							.setLabel('Assign LQC to me')
 							.setStyle('SUCCESS')
 							.setEmoji('819518919739965490'),
 					);
@@ -233,7 +233,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					row.addComponents(
 						new MessageButton()
 							.setCustomId(`assignSubQCToMe:${req.body.issue.key}`)
-							.setLabel('Assign to me')
+							.setLabel('Assign SubQC to me')
 							.setStyle('SUCCESS')
 							.setEmoji('819518919739965490'),
 					);
@@ -272,7 +272,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					.addComponents(
 						new MessageButton()
 							.setCustomId(`assignSubQCToMe:${req.body.issue.key}`)
-							.setLabel('Assign to me')
+							.setLabel('Assign SubQC to me')
 							.setStyle('SUCCESS')
 							.setEmoji('819518919739965490'),
 					);
@@ -280,7 +280,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					row.addComponents(
 						new MessageButton()
 							.setCustomId(`assignLQCToMe:${req.body.issue.key}`)
-							.setLabel('Assign to me')
+							.setLabel('Assign LQC to me')
 							.setStyle('SUCCESS')
 							.setEmoji('819518919739965490'),
 					);
@@ -314,7 +314,6 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					}).catch(console.error);
 			}
 		} else {
-			// TODO: Add support for SQC + LQC
 			let languages = '';
 
 			// eslint-disable-next-line no-return-assign
@@ -333,24 +332,53 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				if (link.status === 'Sub QC/Language QC') {
 					const newRow = new MessageActionRow();
 
-					// TODO: Add buttons based on assignee status
+					if (msg.embeds[0].fields[1].value === 'Unassigned') {
+						newRow.addComponents(
+							new MessageButton()
+								.setCustomId(`assignLQCToMe:${req.body.issue.key}`)
+								.setLabel('Assign LQC to me')
+								.setStyle('SUCCESS')
+								.setEmoji('819518919739965490'),
+						);
+					}
+					if (msg.embeds[0].fields[2].value === 'Unassigned') {
+						newRow.addComponents(
+							new MessageButton()
+								.setCustomId(`assignSubQCToMe:${req.body.issue.key}`)
+								.setLabel('Assign SubQC to me')
+								.setStyle('SUCCESS')
+								.setEmoji('819518919739965490'),
+						);
+					}
 
-					// TODO: Add done to LQC and SubQC field based on Jira api field value
 					const embed = new MessageEmbed()
 						.setTitle(req.body.issue.key!)
 						.setColor('#0052cc')
 						.setDescription(req.body.issue.fields!.summary || 'No description available')
-						.addField('Status', req.body.issue.fields!.status.name, true)
+						.addField('Status', req.body.issue.fields!.status.name)
 						.addField('LQC Assignee', msg.embeds[0].fields[1].value, true)
 						.addField('SubQC Assignee', msg.embeds[0].fields[2].value, true)
+						.addField('LQC Status',
+							(
+								// eslint-disable-next-line no-nested-ternary
+								(req.body.issue.fields![config.jira.fields.LQCSubQCFinished] as any[]).find((item) => item.value === 'LQC_done').length > 0 ? 'Done' : (
+									msg.embeds[0].fields[1].value === 'Unassigned' ? 'To do' : 'In progress'
+								)
+							), true)
+						.addField('SubQC Status',
+							(
+								// eslint-disable-next-line no-nested-ternary
+								(req.body.issue.fields![config.jira.fields.LQCSubQCFinished] as any[]).find((item) => item.value === 'Sub_QC_done').length > 0 ? 'Done' : (
+									msg.embeds[0].fields[1].value === 'Unassigned' ? 'To do' : 'In progress'
+								)
+							), true)
 						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
 						.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
 						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
 
 					msg.edit({
 						embeds: [embed],
-						// TODO: Only add component when there's a role to be assigned
-						components: [newRow],
+						components: (msg.embeds[0].fields[1].value === 'Unassigned' || msg.embeds[0].fields[2].value === 'Unassigned' ? [newRow] : []),
 					});
 				} else {
 					const embed = new MessageEmbed()
@@ -369,7 +397,6 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					});
 				}
 			} else {
-				// TODO: Handle SubQC + LQC
 				// eslint-disable-next-line max-len
 				const newChannelLink = await RoleLink.findById(req.body.issue.fields!.status.name).lean().exec()
 					.catch((err) => {
@@ -386,24 +413,70 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 				if (newChannel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${channelLink.discordChannelId} is not a guild text channel`);
 
-				const embed = new MessageEmbed()
-					.setTitle(`${req.body.issue.key}`)
-					.setColor('#0052cc')
-					.setDescription(req.body.issue.fields!.summary || 'No description available')
-					.addField('Status', req.body.issue.fields!.status.name, true)
-					.addField('Assignee', 'Unassigned', true)
-					.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-					.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
-					.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
+				if (req.body.issue.fields!.status.name === 'Sub QC/Language QC') {
+					const newRow = new MessageActionRow()
+						.addComponents(
+							new MessageButton()
+								.setCustomId(`assignLQCToMe:${req.body.issue.key}`)
+								.setLabel('Assign LQC to me')
+								.setStyle('SUCCESS')
+								.setEmoji('819518919739965490'),
+						).addComponents(
+							new MessageButton()
+								.setCustomId(`assignSubQCToMe:${req.body.issue.key}`)
+								.setLabel('Assign SubQC to me')
+								.setStyle('SUCCESS')
+								.setEmoji('819518919739965490'),
+						);
 
-				const newMsg = await newChannel.send({ embeds: [embed], components: [row] });
+					const embed = new MessageEmbed()
+						.setTitle(req.body.issue.key!)
+						.setColor('#0052cc')
+						.setDescription(req.body.issue.fields!.summary || 'No description available')
+						.addField('Status', req.body.issue.fields!.status.name)
+						.addField('LQC Assignee', 'Unassigned', true)
+						.addField('SubQC Assignee', 'Unassigned', true)
+						.addField('LQC Status', 'To do', true)
+						.addField('SubQC Status', 'To do', true)
+						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
+						.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
+						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
 
-				link.discordMessageId = newMsg.id;
-				link.status = req.body.issue.fields!.status.name;
+					const newMsg = await newChannel.send({
+						embeds: [embed],
+						components: (req.body.issue.fields!.assignee === null ? [newRow] : []),
+					});
 
-				await link.save();
+					link.discordMessageId = newMsg.id;
+					link.status = req.body.issue.fields!.status.name;
 
-				msg.delete();
+					await link.save();
+
+					msg.delete();
+				} else {
+					// TODO: Handle return to older status and assignee auto hand off
+					const embed = new MessageEmbed()
+						.setTitle(`${req.body.issue.key}`)
+						.setColor('#0052cc')
+						.setDescription(req.body.issue.fields!.summary || 'No description available')
+						.addField('Status', req.body.issue.fields!.status.name, true)
+						.addField('Assignee', 'Unassigned', true)
+						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
+						.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
+						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
+
+					const newMsg = await newChannel.send({
+						embeds: [embed],
+						components: (req.body.issue.fields!.assignee === null ? [row] : []),
+					});
+
+					link.discordMessageId = newMsg.id;
+					link.status = req.body.issue.fields!.status.name;
+
+					await link.save();
+
+					msg.delete();
+				}
 			}
 		}
 	}
