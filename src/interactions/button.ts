@@ -37,7 +37,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 
 		const link = await IdLink.findOne({ discordMessageId: interaction.message.id }).lean().exec()
 			.catch((err: Error) => {
-				interaction.user.send(strings.assignmentFail);
+				interaction.editReply(strings.assignmentFail);
 				throw err;
 			});
 		if (!link) return;
@@ -61,7 +61,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				const { _id: discordId } = await GroupLink.findOne({ jiraName: `Translator - ${language}` })
 					.exec()
 					.catch((err: Error) => {
-						interaction.user.send(strings.assignmentFail);
+						interaction.editReply(strings.assignmentFail);
 						throw err;
 					});
 				return member.roles.cache.has(discordId);
@@ -73,7 +73,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				const { _id: discordId } = await GroupLink.findOne({ jiraName: `Translation Checker - ${language}` })
 					.exec()
 					.catch((err: Error) => {
-						interaction.user.send(strings.assignmentFail);
+						interaction.editReply(strings.assignmentFail);
 						throw err;
 					});
 				return member.roles.cache.has(discordId);
@@ -84,7 +84,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Proofreader' })
 				.exec()
 				.catch((err: Error) => {
-					interaction.user.send(strings.assignmentFail);
+					interaction.editReply(strings.assignmentFail);
 					throw err;
 				});
 			valid = member.roles.cache.has(discordId);
@@ -93,7 +93,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Subtitler' })
 				.exec()
 				.catch((err: Error) => {
-					interaction.user.send(strings.assignmentFail);
+					interaction.editReply(strings.assignmentFail);
 					throw err;
 				});
 			valid = member.roles.cache.has(discordId);
@@ -102,7 +102,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Pre-Quality Control' })
 				.exec()
 				.catch((err: Error) => {
-					interaction.user.send(strings.assignmentFail);
+					interaction.editReply(strings.assignmentFail);
 					throw err;
 				});
 			valid = member.roles.cache.has(discordId);
@@ -111,7 +111,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Video Editor' })
 				.exec()
 				.catch((err: Error) => {
-					interaction.user.send(strings.assignmentFail);
+					interaction.editReply(strings.assignmentFail);
 					throw err;
 				});
 			valid = member.roles.cache.has(discordId);
@@ -120,14 +120,14 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			const { _id: discordId } = await GroupLink.findOne({ jiraName: 'Quality Control' })
 				.exec()
 				.catch((err: Error) => {
-					interaction.user.send(strings.assignmentFail);
+					interaction.editReply(strings.assignmentFail);
 					throw err;
 				});
 			valid = member.roles.cache.has(discordId);
 		}
 
 		if (!valid) {
-			await interaction.user.send(strings.assignmentNotPossible);
+			await interaction.editReply(strings.assignmentNotPossible);
 		} else {
 			// @ts-expect-error accountId missing
 			await jiraClient.issues.assignIssue({
@@ -135,6 +135,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				name: user.username,
 			});
 			await userInfo.save();
+			await interaction.editReply(strings.assignmentSuccess);
 		}
 	}
 }
