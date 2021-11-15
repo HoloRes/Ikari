@@ -12,6 +12,8 @@ interface Project {
 	lqcLastUpdate?: Date;
 	sqcLastUpdate?: Date;
 	staleCount: number;
+	// Below is set using bit shifts (1 << k)
+	updateRequest: number;
 }
 
 // Schema
@@ -25,6 +27,7 @@ const ProjectSchema = new mongoose.Schema({
 	lqcLastUpdate: { type: Date },
 	sqcLastUpdate: { type: Date },
 	staleCount: { type: Number, default: 0 },
+	updateRequest: { type: Number, default: 0 },
 });
 
 export default conn1.model<Project>('Project', ProjectSchema, 'projects');
