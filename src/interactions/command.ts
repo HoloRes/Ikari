@@ -88,7 +88,7 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 					await interaction.editReply('Something went wrong, please try again later.');
 					throw new Error(err);
 				}) as AxiosResponse<UserLink>;
-				LQCAssignee = `<@${userData._id}`;
+				LQCAssignee = `<@${userData._id}>`;
 			}
 
 			if (issue.fields![config.jira.fields.SubQCAssignee]) {
@@ -107,8 +107,10 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 					await interaction.editReply('Something went wrong, please try again later.');
 					throw new Error(err);
 				}) as AxiosResponse<UserLink>;
-				SubQCAssignee = `<@${userData._id}`;
+				SubQCAssignee = `<@${userData._id}>`;
 			}
+
+			console.log((issue.fields![config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done'));
 
 			embed = new MessageEmbed()
 				.setTitle(issue.key!)
@@ -120,14 +122,14 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 				.addField('LQC Status',
 					(
 						// eslint-disable-next-line no-nested-ternary
-						(issue.fields![config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'LQC_done').length > 0 ? 'Done' : (
+						(issue.fields![config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'LQC_done') ? 'Done' : (
 							issue.fields![config.jira.fields.LQCAssignee] === null ? 'To do' : 'In progress'
 						) ?? 'To do'
 					))
 				.addField('SubQC Status',
 					(
 						// eslint-disable-next-line no-nested-ternary
-						(issue.fields![config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done').length > 0 ? 'Done' : (
+						(issue.fields![config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done') ? 'Done' : (
 							issue.fields![config.jira.fields.SubQCAssignee] === null ? 'To do' : 'In progress'
 						) ?? 'To do'
 					))
