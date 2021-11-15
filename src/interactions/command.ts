@@ -12,7 +12,7 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 	if (interaction.commandName === 'project') {
 		await interaction.deferReply();
 
-		const key = interaction.options.getString('id', true);
+		const key = interaction.options.getString('key', true);
 		let issue;
 
 		try {

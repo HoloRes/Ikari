@@ -242,7 +242,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				if (req.body.issue.fields![config.jira.fields.SubQCAssignee] === null) {
 					row.addComponents(
 						new MessageButton()
-							.setCustomId(`assignSubQCToMe:${req.body.issue.key}`)
+							.setCustomId(`assignSQCToMe:${req.body.issue.key}`)
 							.setLabel('Assign SubQC to me')
 							.setStyle('SUCCESS')
 							.setEmoji('819518919739965490'),
@@ -276,7 +276,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				userDoc.lastAssigned = new Date();
 				// @ts-expect-error isAssigned possibly false
 				userDoc.assignedTo = req.body.issue.key;
-				link.lastUpdate = new Date();
+				link.lqcLastUpdate = new Date();
 				// @ts-expect-error no overload match
 				userDoc.save((err) => {
 					if (err) {
@@ -304,7 +304,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				const row = new MessageActionRow()
 					.addComponents(
 						new MessageButton()
-							.setCustomId(`assignSubQCToMe:${req.body.issue.key}`)
+							.setCustomId(`assignSQCToMe:${req.body.issue.key}`)
 							.setLabel('Assign SubQC to me')
 							.setStyle('SUCCESS')
 							.setEmoji('819518919739965490'),
@@ -346,7 +346,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				userDoc.lastAssigned = new Date();
 				// @ts-expect-error isAssigned possibly false
 				userDoc.assignedTo = req.body.issue.key;
-				link.lastUpdate = new Date();
+				link.sqcLastUpdate = new Date();
 				// @ts-expect-error no overload match
 				userDoc.save((err) => {
 					if (err) {
@@ -400,7 +400,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					if (msg.embeds[0].fields[2].value === 'Unassigned') {
 						newRow.addComponents(
 							new MessageButton()
-								.setCustomId(`assignSubQCToMe:${req.body.issue.key}`)
+								.setCustomId(`assignSQCToMe:${req.body.issue.key}`)
 								.setLabel('Assign SubQC to me')
 								.setStyle('SUCCESS')
 								.setEmoji('819518919739965490'),
@@ -479,7 +479,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 								.setEmoji('819518919739965490'),
 						).addComponents(
 							new MessageButton()
-								.setCustomId(`assignSubQCToMe:${req.body.issue.key}`)
+								.setCustomId(`assignSQCToMe:${req.body.issue.key}`)
 								.setLabel('Assign SubQC to me')
 								.setStyle('SUCCESS')
 								.setEmoji('819518919739965490'),

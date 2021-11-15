@@ -4,5 +4,6 @@
   "assignmentNotPossibleArtist": "You don't have the artist role so I can't assign that to you.",
   "assignmentSuccess": "(To change): Succesfully assigned this issue to you.",
   "noJiraAccount": "You gotta have an account to use this stupid. Log in to your Jira account once to link it, please and thanks.",
-  "IkariClippingNotAvailable": "(To change): Ikari isn't able yet to automatically download clips, so you'll have to do it yourself."
+  "IkariClippingNotAvailable": "(To change): Ikari isn't able yet to automatically download clips, so you'll have to do it yourself.",
+  "interactionMemberNotFound": "Uh, apparently no one clicked on the button? Try again."
 }

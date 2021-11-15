@@ -106,8 +106,8 @@ client.on('messageCreate', (message) => {
 									options: [
 										{
 											type: 3,
-											name: 'id',
-											description: 'The project id',
+											name: 'key',
+											description: 'The project key',
 											default: false,
 											required: true,
 										},

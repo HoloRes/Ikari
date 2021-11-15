@@ -10,7 +10,7 @@ interface Project {
 	finished: boolean;
 	lastUpdate: Date;
 	lqcLastUpdate?: Date;
-	subqcLastUpdate?: Date;
+	sqcLastUpdate?: Date;
 	staleCount: number;
 }
 
@@ -23,7 +23,7 @@ const ProjectSchema = new mongoose.Schema({
 	finished: { type: Boolean, default: false },
 	lastUpdate: { type: Date, default: new Date() },
 	lqcLastUpdate: { type: Date },
-	subqcLastUpdate: { type: Date },
+	sqcLastUpdate: { type: Date },
 	staleCount: { type: Number, default: 0 },
 });
 
