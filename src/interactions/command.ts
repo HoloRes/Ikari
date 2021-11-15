@@ -13,15 +13,21 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 		await interaction.deferReply();
 
 		const key = interaction.options.getString('id', true);
+		let issue;
 
-		const issue = await jiraClient.issues.getIssue({ issueIdOrKey: key })
-			.catch(async (err) => {
-				if (err.response) console.error(err.response.body);
+		try {
+			issue = await jiraClient.issues.getIssue({ issueIdOrKey: key });
+		} catch (err: any) {
+			if (err.response && err.response.status !== 404) {
+				console.error(err.response.body);
 				await interaction.editReply('Something went wrong, please try again later.');
-			});
+				return;
+			}
+		}
 
 		if (!issue) {
-			return interaction.editReply('Issue not found.');
+			interaction.editReply('Issue not found.');
+			return;
 		}
 
 		let languages = '';
