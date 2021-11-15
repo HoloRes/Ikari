@@ -8,13 +8,14 @@ import axios, { AxiosResponse } from 'axios';
 
 // Models
 import IdLink from './models/IdLink';
-import { client } from './index';
+import { client, jiraClient } from './index';
 import { components } from './types/jira';
 import StatusLink from './models/StatusLink';
 import UserInfo from './models/UserInfo';
 
 // Local files
 const config = require('../config.json');
+const strings = require('../strings.json');
 
 // Init
 // eslint-disable-next-line import/prefer-default-export
@@ -132,9 +133,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				throw new Error(err);
 			});
 
-		const { transitionName } = req.body.transition;
+		const transitionName = req.body.transition && req.body.transition.name;
 
-		if (req.body.transition && transitionName === 'Assign') {
+		if (transitionName === 'Assign') {
 			if (req.body.issue.fields!.assignee === null) {
 				const row = new MessageActionRow()
 					.addComponents(
@@ -196,17 +197,39 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						fetchedUser.send({ content: 'New assignment', embeds: [embed] });
 					}).catch(console.error);
 			}
-		} else if (req.body.transition && transitionName === 'Finish') {
+		} else if (transitionName === 'Finish') {
 			msg.delete();
 			link.finished = true;
 			link.save((err) => {
 				if (err) throw err;
 			});
-		} else if (req.body.transition && transitionName === 'Send to Ikari') {
-			// eslint-disable-next-line max-len
-			// TODO: Add temporary message telling the user that this functionality is not implemented yet.
-			//       Also, immediately transition to next status
-		} else if (req.body.transition && transitionName === 'Assign LQC') {
+		} else if (transitionName === 'Send to Ikari') {
+			await jiraClient.issues.doTransition({
+				issueIdOrKey: req.body.issue.key!,
+				transition: {
+					name: 'Send to translator',
+				},
+			});
+
+			const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+				params: { key: req.body.user.key },
+				auth: {
+					username: config.oauthServer.clientId,
+					password: config.oauthServer.clientSecret,
+				},
+			}).catch((err) => {
+				console.error(err.response.data);
+				throw new Error(err);
+			}) as AxiosResponse<any>;
+
+			const discordUser = await client.users.fetch(user._id)
+				.catch((err) => {
+					console.error(err);
+					throw err;
+				});
+
+			discordUser.send(strings.IkariClippingNotAvailable);
+		} else if (transitionName === 'Assign LQC') {
 			if (req.body.issue.fields![config.jira.fields.LQCAssignee] === null) {
 				const row = new MessageActionRow()
 					.addComponents(
@@ -276,7 +299,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						fetchedUser.send({ content: 'New assignment', embeds: [embed] });
 					}).catch(console.error);
 			}
-		} else if (req.body.transition && transitionName === 'Assign SubQC') {
+		} else if (transitionName === 'Assign SubQC') {
 			if (req.body.issue.fields![config.jira.fields.SubQCAssignee] === null) {
 				const row = new MessageActionRow()
 					.addComponents(
