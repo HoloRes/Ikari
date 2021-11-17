@@ -7,13 +7,15 @@ import express from 'express';
 import * as util from 'util';
 import { Version2Client } from 'jira.js';
 import helmet from 'helmet';
+// Models
+import UserInfo from './models/UserInfo';
 
 // Config
 // eslint-disable-next-line import/order
 const config = require('../config.json');
 
 // Pre-init
-// TODO: Add Sentry and Loki
+// TODO: Add Sentry and Loki+Winston
 // Mongoose
 export const conn1 = mongoose.createConnection(`mongodb+srv://${config.mongodb.username}:${config.mongodb.password}@${config.mongodb.host}/${config.mongodb.database}`);
 
@@ -116,7 +118,7 @@ client.on('messageCreate', (message) => {
 							],
 						},
 					);
-					message.reply('Done!');
+					await message.reply('Done!');
 				} catch (e) {
 					console.error(e);
 				}
@@ -132,6 +134,20 @@ client.on('messageCreate', (message) => {
 
 client.on('interactionCreate', async (interaction) => {
 	if (interaction.isCommand()) await commandInteractionHandler(interaction);
+});
+
+client.on('guildMemberUpdate', async (_, member) => {
+	let user = await UserInfo.findById(member.id).exec();
+	if (!user) {
+		user = new UserInfo({
+			_id: member.id,
+		});
+	}
+	user.roles = member.roles.cache.map((role) => role.id);
+	// @ts-expect-error no overload match
+	user.save((err) => {
+		console.error(err);
+	});
 });
 
 client.login(config.discord.authToken);

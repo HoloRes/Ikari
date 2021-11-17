@@ -30,12 +30,14 @@
     "jira.js": "^2.7.0",
     "mongoose": "^6.0.11",
     "nanoid": "^3.1.20",
+    "node-cron": "^3.0.0",
     "utf-8-validate": "^5.0.5",
     "webdav": "^4.3.0"
   },
   "devDependencies": {
     "@tsconfig/node16": "^1.0.2",
     "@types/express": "^4.17.13",
+    "@types/node-cron": "^3.0.0",
     "@typescript-eslint/eslint-plugin": "^5.0.0",
     "@typescript-eslint/parser": "^5.0.0",
     "eslint": "^8.0.1",

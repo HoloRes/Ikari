@@ -2,7 +2,7 @@
 import mongoose from 'mongoose';
 import { conn1 } from '../index';
 
-interface Project {
+export interface Project {
 	jiraId?: string;
 	discordMessageId?: string;
 	type: 'translation' | 'artist';

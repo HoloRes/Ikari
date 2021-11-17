@@ -5,13 +5,15 @@ import {
 	BaseGuildTextChannel, MessageActionRow, MessageButton, MessageEmbed,
 } from 'discord.js';
 import axios, { AxiosResponse } from 'axios';
+import cron from 'node-cron';
 
 // Models
-import IdLink from './models/IdLink';
+import IdLink, { Project } from './models/IdLink';
 import { client, jiraClient } from './index';
 import { components } from './types/jira';
 import StatusLink from './models/StatusLink';
 import UserInfo from './models/UserInfo';
+import GroupLink from './models/GroupLink';
 
 // Local files
 const config = require('../config.json');
@@ -562,5 +564,23 @@ router.post('/webhook/artist', (req, res) => {
 });
 
 // TODO: Create auto assign function
+async function autoAssign(project: Project): Promise<void> {
+	const statusLink = await StatusLink.findById(project.status).exec();
+	const hiatusRole = await GroupLink.findOne({ jiraName: 'Hiatus' }).exec();
+	const currentStatusRole = await GroupLink.findOne();
 
-// TODO: Timer for auto assignment and stale
+	const available = await UserInfo.find({
+		roles: {
+			$not: hiatusRole?._id ?? '0000',
+		},
+		isAssigned: false,
+	}, null, {
+		sort: {
+			lastAssigned: 'desc',
+		},
+	}).exec();
+}
+
+cron.schedule('0 * * * *', async () => {
+	// TODO: Timer for auto assignment and stale
+});
