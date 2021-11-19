@@ -39,6 +39,7 @@ interface WebhookBody {
 
 // Routes
 router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
+	// TODO: Re-add language field
 	if (req.query.token !== config.webhookSecret) {
 		res.status(403).end();
 		return;

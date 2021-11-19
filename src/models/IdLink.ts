@@ -14,6 +14,7 @@ export interface Project {
 	staleCount: number;
 	// Below is set using bit shifts (1 << k)
 	updateRequest: number;
+	hasAssignment: number;
 }
 
 // Schema
@@ -28,6 +29,7 @@ const ProjectSchema = new mongoose.Schema({
 	sqcLastUpdate: { type: Date },
 	staleCount: { type: Number, default: 0 },
 	updateRequest: { type: Number, default: 0 },
+	hasAssignment: { type: Number, default: 0 },
 });
 
 export default conn1.model<Project>('Project', ProjectSchema, 'projects');

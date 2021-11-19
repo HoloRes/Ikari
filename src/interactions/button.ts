@@ -2,8 +2,8 @@ import Discord from 'discord.js';
 import axios, { AxiosResponse } from 'axios';
 import { jiraClient } from '../index';
 import IdLink from '../models/IdLink';
-import GroupLink from '../models/GroupLink';
 import UserInfo from '../models/UserInfo';
+import checkValid from '../lib/checkValid';
 
 const config = require('../../config.json');
 const strings = require('../../strings.json');
@@ -61,71 +61,11 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		const languages = interaction.message.embeds[0].fields![3].value.split(', ');
 		const status = interaction.message.embeds[0].fields![0].value;
 
-		let valid = false;
-
-		if (status === 'Translating') {
-			const roles = await Promise.all(languages.map(async (language: string) => {
-				const doc = await GroupLink.findOne({ jiraName: `Translator - ${language}` })
-					.exec()
-					.catch((err: Error) => {
-						interaction.editReply(strings.assignmentFail);
-						throw err;
-					});
-				return member.roles.cache.has(doc?._id);
-			}));
-			valid = roles.includes(true);
-		} else if (status === 'Translation Check') {
-			const roles = await Promise.all(languages.map(async (language: string) => {
-				const doc = await GroupLink.findOne({ jiraName: `Translation Checker - ${language}` })
-					.exec()
-					.catch((err: Error) => {
-						interaction.editReply(strings.assignmentFail);
-						throw err;
-					});
-				return member.roles.cache.has(doc?._id);
-			}));
-			valid = roles.includes(true);
-		} else if (status === 'Proofreading') {
-			const doc = await GroupLink.findOne({ jiraName: 'Proofreader' })
-				.exec()
-				.catch((err: Error) => {
-					interaction.editReply(strings.assignmentFail);
-					throw err;
-				});
-			valid = member.roles.cache.has(doc?._id);
-		} else if (status === 'Subbing') {
-			const doc = await GroupLink.findOne({ jiraName: 'Subtitler' })
-				.exec()
-				.catch((err: Error) => {
-					interaction.editReply(strings.assignmentFail);
-					throw err;
-				});
-			valid = member.roles.cache.has(doc?._id);
-		} else if (status === 'PreQC') {
-			const doc = await GroupLink.findOne({ jiraName: 'Pre-Quality Control' })
-				.exec()
-				.catch((err: Error) => {
-					interaction.editReply(strings.assignmentFail);
-					throw err;
-				});
-			valid = member.roles.cache.has(doc?._id);
-		} else if (status === 'Video Editing') {
-			const doc = await GroupLink.findOne({ jiraName: 'Video Editor' })
-				.exec()
-				.catch((err: Error) => {
-					interaction.editReply(strings.assignmentFail);
-					throw err;
-				});
-			valid = member.roles.cache.has(doc?._id);
-		} else if (status === 'Quality Control') {
-			const doc = await GroupLink.findOne({ jiraName: 'Quality Control' })
-				.exec()
-				.catch((err: Error) => {
-					interaction.editReply(strings.assignmentFail);
-					throw err;
-				});
-			valid = member.roles.cache.has(doc?._id);
-		}
+		const valid = await checkValid(member, status, languages)
+			.catch((err) => {
+				console.error(err);
+				interaction.editReply(strings.assignmentFail);
+			});
 
 		if (!valid) {
 			await interaction.editReply(strings.assignmentNotPossible);
@@ -176,17 +116,13 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 
 		const languages = interaction.message.embeds[0].fields![3].value.split(', ');
 
-		const roles = await Promise.all(languages.map(async (language: string) => {
-			const doc = await GroupLink.findOne({ jiraName: `Language QC - ${language}` })
-				.exec()
-				.catch((err: Error) => {
-					interaction.editReply(strings.assignmentFail);
-					throw err;
-				});
-			return member.roles.cache.has(doc?._id);
-		}));
+		const valid = await checkValid(member, 'Sub QC/Language QC', languages, 'lqc')
+			.catch((err) => {
+				console.error(err);
+				interaction.editReply(strings.assignmentFail);
+			});
 
-		if (roles.includes(true)) {
+		if (valid) {
 			// TODO: Error handling
 			await jiraClient.issues.doTransition({
 				issueIdOrKey: issueKey,
@@ -238,14 +174,13 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			return;
 		}
 
-		const doc = await GroupLink.findOne({ jiraName: 'Sub QC' })
-			.exec()
-			.catch((err: Error) => {
+		const valid = await checkValid(member, 'Sub QC/Language QC', [], 'sqc')
+			.catch((err) => {
+				console.error(err);
 				interaction.editReply(strings.assignmentFail);
-				throw err;
 			});
 
-		if (member.roles.cache.has(doc?._id)) {
+		if (valid) {
 			// TODO: Error handling
 			await jiraClient.issues.doTransition({
 				issueIdOrKey: issueKey,
