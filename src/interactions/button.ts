@@ -11,7 +11,7 @@ const strings = require('../../strings.json');
 export default async function buttonInteractionHandler(interaction: Discord.ButtonInteraction) {
 	if (!interaction.guild) return;
 
-	// TODO: Add interaction handlers for LQC, SQC and artist
+	// TODO: Add interaction handlers for artist
 	if (interaction.customId.startsWith('assignToMe:')) {
 		await interaction.deferReply({ ephemeral: true });
 		const issueKey = interaction.customId.split(':')[1];
@@ -71,10 +71,16 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			await interaction.editReply(strings.assignmentNotPossible);
 		} else {
 			// TODO: Error handling
-			// @ts-expect-error accountId missing
-			await jiraClient.issues.assignIssue({
+			await jiraClient.issues.doTransition({
 				issueIdOrKey: issueKey,
-				name: user.username,
+				fields: {
+					assignee: {
+						name: user.username,
+					},
+				},
+				transition: {
+					id: config.jira.transitions.Assign,
+				},
 			});
 			await userInfo.save();
 			await interaction.editReply(strings.assignmentSuccess);

@@ -1,7 +1,8 @@
 {
     "discord": {
         "prefix": "",
-        "authToken": ""
+        "authToken": "",
+        "guild": ""
     },
     "webdav": {
         "url": "",
@@ -34,7 +35,16 @@
             "extraArgs": "",
             "videoLink": "",
             "timestamps": "",
-            "fileExt": ""
+            "fileExt": "",
+            "LQCAssignee": "",
+            "SubQCAssignee": "",
+            "LQCSubQCFinished": ""
+        },
+        "transitions": {
+            "Assign": "",
+            "Assign SubQC": "",
+            "Assign LQC": "",
+            "Send to translator": ""
         }
     },
     "webhookSecret": "",

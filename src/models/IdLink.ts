@@ -7,6 +7,7 @@ export interface Project {
 	discordMessageId?: string;
 	type: 'translation' | 'artist';
 	status: string;
+	languages: string[];
 	finished: boolean;
 	lastUpdate: Date;
 	lqcLastUpdate?: Date;
@@ -23,6 +24,7 @@ const ProjectSchema = new mongoose.Schema({
 	discordMessageId: String,
 	type: { type: String, enum: ['translation', 'artist'], required: true },
 	status: { type: String, required: true },
+	languages: { type: [String], required: true },
 	finished: { type: Boolean, default: false },
 	lastUpdate: { type: Date, default: new Date() },
 	lqcLastUpdate: { type: Date },

@@ -137,6 +137,7 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 client.on('guildMemberUpdate', async (_, member) => {
+	if (member.guild.id !== config.discord.guild) return;
 	let user = await UserInfo.findById(member.id).exec();
 	if (!user) {
 		user = new UserInfo({
@@ -144,7 +145,6 @@ client.on('guildMemberUpdate', async (_, member) => {
 		});
 	}
 	user.roles = member.roles.cache.map((role) => role.id);
-	// @ts-expect-error no overload match
 	user.save((err) => {
 		console.error(err);
 	});

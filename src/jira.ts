@@ -14,6 +14,7 @@ import { components } from './types/jira';
 import StatusLink from './models/StatusLink';
 import UserInfo from './models/UserInfo';
 import GroupLink from './models/GroupLink';
+import checkValid from './lib/checkValid';
 
 // Local files
 const config = require('../config.json');
@@ -39,7 +40,6 @@ interface WebhookBody {
 
 // Routes
 router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
-	// TODO: Re-add language field
 	if (req.query.token !== config.webhookSecret) {
 		res.status(403).end();
 		return;
@@ -66,12 +66,10 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			jiraId: req.body.issue.id,
 			type: 'translation',
 			status: req.body.issue.fields!.status.name,
+			// eslint-disable-next-line max-len
+			languages: req.body.issue.fields![config.jira.fields.langs].map((language: JiraField) => language.value),
+			lastUpdate: new Date(),
 		});
-
-		let languages = '';
-
-		// eslint-disable-next-line no-return-assign
-		req.body.issue.fields![config.jira.fields.langs].map((language: JiraField) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
 
 		const embed = new MessageEmbed()
 			.setTitle(`${req.body.issue.key}`)
@@ -175,10 +173,8 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				}
 				userDoc.isAssigned = true;
 				userDoc.lastAssigned = new Date();
-				// @ts-expect-error isAssigned possibly false
 				userDoc.assignedTo = req.body.issue.key;
 				link.lastUpdate = new Date();
-				// @ts-expect-error no overload match
 				userDoc.save((err) => {
 					if (err) {
 						console.error(err);
@@ -257,6 +253,25 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					value: 'Unassigned',
 				} as any);
 				msg.edit({ embeds: [embed], components: [row] });
+
+				if (link.hasAssignment & (1 << 1)) {
+					link.hasAssignment -= (1 << 1);
+					link.save((err) => {
+						console.error(err);
+					});
+					const user = await UserInfo.findOne({ assignedTo: link.jiraId, assignedAs: 'lqc' }).exec()
+						.catch((err) => {
+							console.log(err);
+						});
+					if (!user) return;
+					user.isAssigned = false;
+					user.assignedAs = undefined;
+					user.assignedTo = undefined;
+					user.lastAssigned = new Date();
+					user.save((err) => {
+						if (err) console.error(err);
+					});
+				}
 			} else {
 				const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
 					params: { key: req.body.issue.fields![config.jira.fields.LQCAssignee].key },
@@ -277,10 +292,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				}
 				userDoc.isAssigned = true;
 				userDoc.lastAssigned = new Date();
-				// @ts-expect-error isAssigned possibly false
 				userDoc.assignedTo = req.body.issue.key;
+				userDoc.assignedAs = 'lqc';
 				link.lqcLastUpdate = new Date();
-				// @ts-expect-error no overload match
 				userDoc.save((err) => {
 					if (err) {
 						console.error(err);
@@ -327,6 +341,25 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					value: 'Unassigned',
 				} as any);
 				msg.edit({ embeds: [embed], components: [row] });
+
+				if (link.hasAssignment & (1 << 2)) {
+					link.hasAssignment -= (1 << 2);
+					link.save((err) => {
+						console.error(err);
+					});
+					const user = await UserInfo.findOne({ assignedTo: link.jiraId, assignedAs: 'sqc' }).exec()
+						.catch((err) => {
+							console.log(err);
+						});
+					if (!user) return;
+					user.isAssigned = false;
+					user.assignedAs = undefined;
+					user.assignedTo = undefined;
+					user.lastAssigned = new Date();
+					user.save((err) => {
+						if (err) console.error(err);
+					});
+				}
 			} else {
 				const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
 					params: { key: req.body.issue.fields![config.jira.fields.SubQCAssignee].key },
@@ -347,10 +380,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				}
 				userDoc.isAssigned = true;
 				userDoc.lastAssigned = new Date();
-				// @ts-expect-error isAssigned possibly false
 				userDoc.assignedTo = req.body.issue.key;
+				userDoc.assignedAs = 'sqc';
 				link.sqcLastUpdate = new Date();
-				// @ts-expect-error no overload match
 				userDoc.save((err) => {
 					if (err) {
 						console.error(err);
@@ -373,10 +405,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					}).catch(console.error);
 			}
 		} else {
-			let languages = '';
-
-			// eslint-disable-next-line no-return-assign
-			req.body.issue.fields![config.jira.fields.langs].map((language: JiraField) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
+			// eslint-disable-next-line max-len
+			link.languages = req.body.issue.fields![config.jira.fields.langs].map((language: JiraField) => language.value);
+			link.save((err) => {
+				if (err) console.error(err);
+			});
 
 			const row = new MessageActionRow()
 				.addComponents(
@@ -456,6 +489,8 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					});
 				}
 			} else {
+				// TODO: Clear user assignments in DB
+
 				// eslint-disable-next-line max-len
 				const newStatusLink = await StatusLink.findById(req.body.issue.fields!.status.name).lean().exec()
 					.catch((err) => {
@@ -526,6 +561,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 							throw new Error(err);
 						}) as AxiosResponse<any>;
 						user = data;
+						link.hasAssignment = (1 << 0);
+					} else {
+						link.hasAssignment = 0;
 					}
 
 					const embed = new MessageEmbed()
@@ -564,14 +602,12 @@ router.post('/webhook/artist', (req, res) => {
 	res.status(200).end();
 });
 
-// TODO: Create auto assign function
-async function autoAssign(project: Project): Promise<void> {
-	const statusLink = await StatusLink.findById(project.status).exec();
+async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void> {
 	const hiatusRole = await GroupLink.findOne({ jiraName: 'Hiatus' }).exec();
-	const currentStatusRole = await GroupLink.findOne();
 
 	const available = await UserInfo.find({
 		roles: {
+			// Set to something impossible when the hiatus role cannot be found
 			$not: hiatusRole?._id ?? '0000',
 		},
 		isAssigned: false,
@@ -580,7 +616,89 @@ async function autoAssign(project: Project): Promise<void> {
 			lastAssigned: 'desc',
 		},
 	}).exec();
+
+	const guild = await client.guilds.fetch(config.discord.guild)
+		.catch((err) => {
+			console.error(err);
+		});
+
+	if (!guild) return;
+
+	const filteredAvailable = available.filter(async (user) => {
+		const member = await guild.members.fetch(user._id)
+			.catch((err) => {
+				console.error(err);
+			});
+		if (!member) return false;
+		return checkValid(member, project.status, project.languages, role);
+	});
+	if (filteredAvailable.length === 0) {
+		// TODO: show error message on Discord
+		return;
+	}
+
+	const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
+		params: { id: filteredAvailable[0]._id },
+		auth: {
+			username: config.oauthServer.clientId,
+			password: config.oauthServer.clientSecret,
+		},
+	}).catch((err) => {
+		console.log(err.response.data);
+		throw new Error(err);
+	}) as AxiosResponse<any>;
+
+	const discordUser = await client.users.fetch(filteredAvailable[0]._id)
+		.catch((err) => {
+			console.error(err);
+		});
+	if (!discordUser) return;
+
+	// Role is only set in SQC/LQC status
+	if (role) {
+		if (role === 'sqc') {
+			await jiraClient.issues.doTransition({
+				issueIdOrKey: project.jiraId!,
+				fields: {
+					[config.jira.fields.SubQCAssignee]: {
+						name: user.username,
+					},
+				},
+				transition: {
+					id: config.jira.transitions['Assign SubQC'],
+				},
+			});
+		} else if (role === 'lqc') {
+			await jiraClient.issues.doTransition({
+				issueIdOrKey: project.jiraId!,
+				fields: {
+					[config.jira.fields.LQCAssignee]: {
+						name: user.username,
+					},
+				},
+				transition: {
+					id: config.jira.transitions['Assign LQC'],
+				},
+			});
+		}
+		await discordUser.send(`You have been auto assigned to ${project.jiraId}.`);
+	} else {
+		await jiraClient.issues.doTransition({
+			issueIdOrKey: project.jiraId!,
+			fields: {
+				assignee: {
+					name: user.username,
+				},
+			},
+			transition: {
+				id: config.jira.transitions.Assign,
+			},
+		});
+		await discordUser.send(`You have been auto assigned to ${project.jiraId}.`);
+	}
 }
+
+// TODO: Stale function, auto assign function
 
 cron.schedule('0 * * * *', async () => {
 	// TODO: Timer for auto assignment and stale

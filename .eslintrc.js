@@ -18,6 +18,7 @@ module.exports = {
 	],
 	rules: {
 		indent: 'off',
+		'no-bitwise': 'off',
 		'no-tabs': 'off',
 		'no-underscore-dangle': 'off', // Disabled as mongoose uses _id
 		'@typescript-eslint/indent': ['error', 'tab'],
