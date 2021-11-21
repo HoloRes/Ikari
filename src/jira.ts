@@ -489,7 +489,19 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					});
 				}
 			} else {
-				// TODO: Clear user assignments in DB
+				const assignedUsers = await UserInfo.find({ assignedTo: req.body.issue.key }).exec();
+				// eslint-disable-next-line array-callback-return
+				assignedUsers.map((user) => {
+					/* eslint-disable no-param-reassign */
+					user.isAssigned = false;
+					user.lastAssigned = new Date();
+					user.assignedAs = undefined;
+					user.assignedTo = undefined;
+					user.save((err) => {
+						if (err) console.error(err);
+					});
+					/* eslint-enable */
+				});
 
 				// eslint-disable-next-line max-len
 				const newStatusLink = await StatusLink.findById(req.body.issue.fields!.status.name).lean().exec()
@@ -702,4 +714,31 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 
 cron.schedule('0 * * * *', async () => {
 	// TODO: Timer for auto assignment and stale
+	const toAutoAssign = await IdLink.find({
+		$or: [
+			{
+				status: 'Sub QC/Language QC',
+				hasAssignment: { $lte: (1 << 1) + (1 << 2) },
+			},
+			{
+				hasAssignment: 0,
+			},
+		],
+		finished: false,
+		// TODO: Make the lastUpdate query dynamic
+		lastUpdate: new Date(Date.now() - (3 * 24 * 3600 * 1000)),
+	}).exec();
+	// eslint-disable-next-line array-callback-return
+	toAutoAssign.map(async (project) => {
+		if (project.status === 'Sub QC/Language QC') {
+			if (!(project.hasAssignment & (1 << 1))) {
+				autoAssign(project, 'lqc');
+			}
+			if (!(project.hasAssignment & (1 << 2))) {
+				autoAssign(project, 'sqc');
+			}
+		} else {
+			autoAssign(project);
+		}
+	});
 });
