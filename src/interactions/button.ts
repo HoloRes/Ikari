@@ -1,6 +1,6 @@
 import Discord from 'discord.js';
 import axios, { AxiosResponse } from 'axios';
-import { jiraClient } from '../index';
+import { jiraClient, logger } from '../index';
 import IdLink from '../models/IdLink';
 import UserInfo from '../models/UserInfo';
 import checkValid from '../lib/checkValid';
@@ -23,7 +23,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				password: config.oauthServer.clientSecret,
 			},
 		}).catch((err) => {
-			console.log(err.response.data);
+			logger.info(err.response.data);
 			throw new Error(err);
 		}) as AxiosResponse<any>;
 
@@ -63,7 +63,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 
 		const valid = await checkValid(member, status, languages)
 			.catch((err) => {
-				console.error(err);
+				logger.error(err);
 				interaction.editReply(strings.assignmentFail);
 			});
 
@@ -96,7 +96,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				password: config.oauthServer.clientSecret,
 			},
 		}).catch((err) => {
-			console.log(err.response.data);
+			logger.log(err.response.data);
 			throw new Error(err);
 		}) as AxiosResponse<any>;
 
@@ -124,7 +124,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 
 		const valid = await checkValid(member, 'Sub QC/Language QC', languages, 'lqc')
 			.catch((err) => {
-				console.error(err);
+				logger.error(err);
 				interaction.editReply(strings.assignmentFail);
 			});
 
@@ -156,7 +156,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				password: config.oauthServer.clientSecret,
 			},
 		}).catch((err) => {
-			console.log(err.response.data);
+			logger.info(err.response.data);
 			throw new Error(err);
 		}) as AxiosResponse<any>;
 
@@ -182,7 +182,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 
 		const valid = await checkValid(member, 'Sub QC/Language QC', [], 'sqc')
 			.catch((err) => {
-				console.error(err);
+				logger.error(err);
 				interaction.editReply(strings.assignmentFail);
 			});
 

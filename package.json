@@ -32,7 +32,9 @@
     "nanoid": "^3.1.20",
     "node-cron": "^3.0.0",
     "utf-8-validate": "^5.0.5",
-    "webdav": "^4.3.0"
+    "webdav": "^4.3.0",
+    "winston": "^3.3.3",
+    "winston-loki": "^6.0.3"
   },
   "devDependencies": {
     "@tsconfig/node16": "^1.0.2",

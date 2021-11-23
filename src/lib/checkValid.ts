@@ -7,6 +7,13 @@ export default async function checkValid(
 	languages: string[],
 	role?: string,
 ): Promise<boolean> {
+	const hiatusRole = await GroupLink.findOne({ jiraName: 'Hiatus' })
+		.exec()
+		.catch((err: Error) => {
+			throw err;
+		});
+	if (member.roles.cache.has(hiatusRole?._id)) return false;
+
 	if (status === 'Translating') {
 		const roles = await Promise.all(languages.map(async (language: string) => {
 			const doc = await GroupLink.findOne({ jiraName: `Translator - ${language}` })

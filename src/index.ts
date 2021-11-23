@@ -7,6 +7,8 @@ import express from 'express';
 import * as util from 'util';
 import { Version2Client } from 'jira.js';
 import helmet from 'helmet';
+import winston from 'winston';
+import LokiTransport from 'winston-loki';
 // Models
 import UserInfo from './models/UserInfo';
 
@@ -38,6 +40,33 @@ import * as jira from './jira';
 import commandInteractionHandler from "./interactions/command";
 /* eslint-enable */
 
+// Logger
+const myFormat = winston.format.printf(({
+	level, message, label, timestamp,
+}) => `${timestamp} ${label ? `[${label}]` : ''} ${level}: ${message}`);
+
+export const logger = winston.createLogger({
+	transports: [
+		new winston.transports.Console({
+			format: winston.format.combine(
+				winston.format.timestamp(),
+				winston.format.cli(),
+				myFormat,
+			),
+			level: config.logTransports?.console?.level ?? 'info',
+		}),
+	],
+});
+
+if (config.logTransports?.loki) {
+	logger.add(new LokiTransport({
+		host: config.logTransports.loki.host,
+		level: config.logTransports.loki.level ?? 'info',
+		labels: { service: 'ikari' },
+	}));
+	logger.debug('Added Loki transport');
+}
+
 // Discord
 export const client = new Discord.Client({
 	partials: ['GUILD_MEMBER', 'MESSAGE', 'REACTION'],
@@ -60,7 +89,7 @@ app.get('/heartbeat', (req, res) => {
 
 // Discord
 client.on('ready', () => {
-	console.log('READY');
+	logger.info('READY');
 });
 
 // Command handler
@@ -120,13 +149,13 @@ client.on('messageCreate', (message) => {
 					);
 					await message.reply('Done!');
 				} catch (e) {
-					console.error(e);
+					logger.error(e);
 				}
 			})();
 			break;
 		}
 		default: {
-			console.log(args);
+			logger.debug(args);
 			break;
 		}
 	}
@@ -146,7 +175,7 @@ client.on('guildMemberUpdate', async (_, member) => {
 	}
 	user.roles = member.roles.cache.map((role) => role.id);
 	user.save((err) => {
-		console.error(err);
+		logger.error(err);
 	});
 });
 

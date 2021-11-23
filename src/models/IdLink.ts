@@ -10,9 +10,11 @@ export interface Project {
 	languages: string[];
 	finished: boolean;
 	lastUpdate: Date;
+	lastStatusChange: Date;
 	lqcLastUpdate?: Date;
 	sqcLastUpdate?: Date;
 	staleCount: number;
+	stale: boolean;
 	// Below is set using bit shifts (1 << k)
 	updateRequest: number;
 	hasAssignment: number;
@@ -27,9 +29,11 @@ const ProjectSchema = new mongoose.Schema({
 	languages: { type: [String], required: true },
 	finished: { type: Boolean, default: false },
 	lastUpdate: { type: Date, default: new Date() },
+	lastStatusChange: { type: Date },
 	lqcLastUpdate: { type: Date },
 	sqcLastUpdate: { type: Date },
 	staleCount: { type: Number, default: 0 },
+	stale: { type: Boolean, default: false },
 	updateRequest: { type: Number, default: 0 },
 	hasAssignment: { type: Number, default: 0 },
 });

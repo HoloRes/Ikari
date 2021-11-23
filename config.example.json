@@ -26,6 +26,15 @@
         "clientId": "",
         "clientSecret": ""
     },
+    "logTransports": {
+        "console": {
+            "level": "info"
+        },
+        "loki": {
+            "host": "",
+            "level": "info"
+        }
+    },
     "jira": {
         "url": "",
         "username": "",

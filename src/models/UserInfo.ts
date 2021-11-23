@@ -8,6 +8,7 @@ type UserInfo = {
 	isAssigned: boolean;
 	assignedTo?: string;
 	assignedAs?: string;
+	updateRequested?: Date;
 	roles: string[];
 };
 
@@ -18,6 +19,7 @@ const UserInfoSchema = new mongoose.Schema({
 	isAssigned: { type: Boolean, default: false },
 	assignedTo: { type: String },
 	assignedAs: { type: String },
+	updateRequested: { type: Date },
 	roles: { type: [String], default: [] },
 });
 
