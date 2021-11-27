@@ -1,14 +1,15 @@
 import axios, { AxiosResponse } from 'axios';
 import Discord, { MessageEmbed } from 'discord.js';
 import { components as JiraComponents } from '../types/jira';
-import { jiraClient } from '../index';
+import { jiraClient, logger } from '../index';
+import Setting from '../models/Setting';
 
 // Config
 const config = require('../../config.json');
 
 // eslint-disable-next-line consistent-return
 export default async function commandInteractionHandler(interaction: Discord.CommandInteraction) {
-	// TODO: Add userinfo command and settings command (limit this one to team lead and devs)
+	// TODO: Add userinfo command
 	if (interaction.commandName === 'project') {
 		await interaction.deferReply();
 
@@ -19,14 +20,14 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 			issue = await jiraClient.issues.getIssue({ issueIdOrKey: key });
 		} catch (err: any) {
 			if (err.response && err.response.status !== 404) {
-				console.error(err.response.body);
+				logger.error(err.response.body);
 				await interaction.editReply('Something went wrong, please try again later.');
 				return;
 			}
 		}
 
 		if (!issue) {
-			interaction.editReply('Issue not found.');
+			await interaction.editReply('Issue not found.');
 			return;
 		}
 
@@ -45,7 +46,7 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 					password: config.oauthServer.clientSecret,
 				},
 			}).catch(async (err) => {
-				console.log(err.response.data);
+				logger.info(err.response.data);
 				await interaction.editReply('Something went wrong, please try again later.');
 				throw new Error(err);
 			}) as AxiosResponse<UserLink>;
@@ -84,7 +85,7 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 						password: config.oauthServer.clientSecret,
 					},
 				}).catch(async (err) => {
-					console.log(err.response.data);
+					logger.info(err.response.data);
 					await interaction.editReply('Something went wrong, please try again later.');
 					throw new Error(err);
 				}) as AxiosResponse<UserLink>;
@@ -103,14 +104,14 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 						password: config.oauthServer.clientSecret,
 					},
 				}).catch(async (err) => {
-					console.log(err.response.data);
+					logger.info(err.response.data);
 					await interaction.editReply('Something went wrong, please try again later.');
 					throw new Error(err);
 				}) as AxiosResponse<UserLink>;
 				SubQCAssignee = `<@${userData._id}>`;
 			}
 
-			console.log((issue.fields![config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done'));
+			logger.info((issue.fields![config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done'));
 
 			embed = new MessageEmbed()
 				.setTitle(issue.key!)
@@ -151,5 +152,57 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 		}
 
 		await interaction.editReply({ embeds: [embed] });
+	} else if (interaction.commandName === 'setting') {
+		await interaction.deferReply({ ephemeral: true });
+
+		const settingName = interaction.options.getString('setting', true);
+		const newValue = interaction.options.getString('value', false);
+
+		const setting = await Setting.findById(settingName).exec();
+		if (newValue) {
+			if (setting) {
+				const prevValue = setting.value;
+				setting.value = newValue;
+
+				const embed = new Discord.MessageEmbed()
+					.setTitle(`Setting: ${setting._id}`)
+					.setDescription('Updated setting')
+					.addField('Old value', prevValue)
+					.addField('New value', setting.value);
+
+				await setting.save(async (err) => {
+					if (err) {
+						await interaction.editReply('Updating setting failed!');
+					} else {
+						await interaction.editReply({ embeds: [embed] });
+					}
+				});
+			} else {
+				const newSetting = new Setting({
+					_id: settingName,
+					value: newValue,
+				});
+
+				const embed = new Discord.MessageEmbed()
+					.setTitle(`Setting: ${newSetting._id}`)
+					.setDescription('Created setting')
+					.addField('New value', newSetting.value);
+
+				await newSetting.save(async (err) => {
+					if (err) {
+						await interaction.editReply('Creating setting failed!');
+					} else {
+						await interaction.editReply({ embeds: [embed] });
+					}
+				});
+			}
+		} else if (setting) {
+			const embed = new Discord.MessageEmbed()
+				.setTitle(`Setting: ${setting._id}`)
+				.addField('Value', setting.value);
+			await interaction.editReply({ embeds: [embed] });
+		} else {
+			await interaction.editReply('Setting not found');
+		}
 	}
 }

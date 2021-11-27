@@ -154,6 +154,46 @@ client.on('messageCreate', (message) => {
 			})();
 			break;
 		}
+		case 'settingSlashCommandSetup': {
+			// Hardcode to only allow GoldElysium
+			if (message.author.id !== '515984841716793344') return;
+			(async () => {
+				try {
+					await rest.put(
+						Routes.applicationGuildCommands(client.application!.id, message.guild!.id),
+						{
+							body: [
+								{
+									name: 'setting',
+									description: 'Set/get setting',
+									defaultPermission: false,
+									options: [
+										{
+											type: 3,
+											name: 'name',
+											description: 'The setting name',
+											default: false,
+											required: true,
+										},
+										{
+											type: 3,
+											name: 'value',
+											description: 'New value',
+											default: false,
+											required: false,
+										},
+									],
+								},
+							],
+						},
+					);
+					await message.reply('Done!');
+				} catch (e) {
+					logger.error(e);
+				}
+			})();
+			break;
+		}
 		default: {
 			logger.debug(args);
 			break;
