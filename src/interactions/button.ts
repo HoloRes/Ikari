@@ -203,5 +203,14 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		} else {
 			await interaction.editReply(strings.assignmentNotPossible);
 		}
+		// TODO: Interaction handlers for stale and abandon
+	} else if (interaction.customId.startsWith('dontStale:')) {
+
+	} else if (interaction.customId.startsWith('dontStaleLQC:')) {
+
+	} else if (interaction.customId.startsWith('dontStaleSQC:')) {
+
+	} else if (interaction.customId.startsWith('abandonProject:')) {
+
 	}
 }
