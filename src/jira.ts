@@ -884,7 +884,7 @@ async function projectUpdateRequestCheck(project: Document<any, any, Project> & 
 				assignedAs: 'lqc',
 			}).exec();
 
-			if (user && (user?.updateRequested! <= compareDate)) {
+			if (user && (user.updateRequested! <= compareDate)) {
 				const discordUser = await client.users.fetch(user._id)
 					.catch((err) => {
 						logger.error(err);
@@ -921,7 +921,7 @@ async function projectUpdateRequestCheck(project: Document<any, any, Project> & 
 				assignedAs: 'lqc',
 			}).exec();
 
-			if (user && (user?.updateRequested! <= compareDate)) {
+			if (user && (user.updateRequested! <= compareDate)) {
 				const discordUser = await client.users.fetch(user._id)
 					.catch((err) => {
 						logger.error(err);
@@ -956,7 +956,7 @@ async function projectUpdateRequestCheck(project: Document<any, any, Project> & 
 			assignedTo: project.jiraId,
 		}).exec();
 
-		if (user && (user?.updateRequested! <= compareDate)) {
+		if (user && (user.updateRequested! <= compareDate)) {
 			const discordUser = await client.users.fetch(user._id)
 				.catch((err) => {
 					logger.error(err);
