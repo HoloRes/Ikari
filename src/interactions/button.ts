@@ -205,11 +205,77 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		}
 		// TODO: Interaction handlers for stale and abandon
 	} else if (interaction.customId.startsWith('dontStale:')) {
+		await interaction.deferReply();
 
-	} else if (interaction.customId.startsWith('dontStaleLQC:')) {
+		const jiraKey = interaction.customId.split(':')[1];
 
-	} else if (interaction.customId.startsWith('dontStaleSQC:')) {
+		const user = await UserInfo.findById(interaction.user.id).exec()
+			.catch((err) => {
+				logger.error(err);
+			});
+		if (!user) {
+			await interaction.editReply('Encountered an error, please try again.');
+			return;
+		}
+		if (user.assignedTo !== jiraKey) {
+			await interaction.editReply('You\'re not assigned to this project anymore.');
+			return;
+		}
 
+		const project = await IdLink.findOne({ jiraId: jiraKey }).exec();
+		if (!project) {
+			await interaction.editReply('Encountered an error, please try again.');
+			return;
+		}
+
+		if (user.assignedAs) {
+			if (user.assignedAs === 'lqc') {
+				if (!(project.updateRequest & (1 << 1))) {
+					await interaction.editReply('Request is not active anymore.');
+					return;
+				}
+				project.lqcLastUpdate = new Date();
+				project.updateRequest -= (1 << 1);
+				project.save(async (err) => {
+					if (err) {
+						logger.error(err);
+						await interaction.editReply('Encountered an error, please try again.');
+						return;
+					}
+					await interaction.editReply('Update received, not staling project.');
+				});
+			} else if (user.assignedAs === 'sqc') {
+				if (!(project.updateRequest & (1 << 2))) {
+					await interaction.editReply('Request is not active anymore.');
+					return;
+				}
+				project.sqcLastUpdate = new Date();
+				project.updateRequest -= (1 << 2);
+				project.save(async (err) => {
+					if (err) {
+						logger.error(err);
+						await interaction.editReply('Encountered an error, please try again.');
+						return;
+					}
+					await interaction.editReply('Update received, not staling project.');
+				});
+			}
+		} else {
+			if (!(project.updateRequest & (1 << 0))) {
+				await interaction.editReply('Request is not active anymore.');
+				return;
+			}
+			project.sqcLastUpdate = new Date();
+			project.updateRequest -= (1 << 0);
+			project.save(async (err) => {
+				if (err) {
+					logger.error(err);
+					await interaction.editReply('Encountered an error, please try again.');
+					return;
+				}
+				await interaction.editReply('Update received, not staling project.');
+			});
+		}
 	} else if (interaction.customId.startsWith('abandonProject:')) {
 
 	}

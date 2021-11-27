@@ -141,6 +141,32 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 		if (transitionName === 'Assign') {
 			if (req.body.issue.fields!.assignee === null) {
+				if (link.hasAssignment & (1 << 0)) {
+					link.hasAssignment -= (1 << 0);
+					link.save((err) => {
+						logger.error(err);
+					});
+					const user = await UserInfo.findOne({ assignedTo: link.jiraId }).exec()
+						.catch((err) => {
+							logger.log(err);
+						});
+					if (!user) return;
+					user.isAssigned = false;
+					user.assignedAs = undefined;
+					user.assignedTo = undefined;
+					user.lastAssigned = new Date();
+					user.save((err) => {
+						if (err) logger.error(err);
+					});
+
+					if (link.updateRequest & (1 << 0)) {
+						link.updateRequest -= (1 << 0);
+						link.save((err) => {
+							if (err) logger.error(err);
+						});
+					}
+				}
+
 				const row = new MessageActionRow()
 					.addComponents(
 						new MessageButton()
@@ -179,6 +205,22 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					previousAssignedUser.lastAssigned = new Date();
 					previousAssignedUser.save((err) => {
 						if (err) logger.error(err);
+					});
+				}
+
+				if (link.updateRequest & (1 << 0)) {
+					link.updateRequest -= (1 << 0);
+					link.save((err) => {
+						if (err) logger.error(err);
+					});
+				}
+				if (!(link.hasAssignment & (1 << 0))) {
+					link.hasAssignment += (1 << 0);
+					link.save((err) => {
+						if (err) {
+							logger.error(err);
+							throw err;
+						}
 					});
 				}
 
@@ -288,6 +330,13 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					user.save((err) => {
 						if (err) logger.error(err);
 					});
+
+					if (link.updateRequest & (1 << 1)) {
+						link.updateRequest -= (1 << 1);
+						link.save((err) => {
+							if (err) logger.error(err);
+						});
+					}
 				}
 			} else {
 				const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
@@ -313,6 +362,22 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					previousAssignedUser.lastAssigned = new Date();
 					previousAssignedUser.save((err) => {
 						if (err) logger.error(err);
+					});
+				}
+
+				if (link.updateRequest & (1 << 1)) {
+					link.updateRequest -= (1 << 1);
+					link.save((err) => {
+						if (err) logger.error(err);
+					});
+				}
+				if (!(link.hasAssignment & (1 << 1))) {
+					link.hasAssignment += (1 << 1);
+					link.save((err) => {
+						if (err) {
+							logger.error(err);
+							throw err;
+						}
 					});
 				}
 
@@ -368,7 +433,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					);
 				}
 
-				const embed = msg.embeds[0].spliceFields(2, 2, {
+				const embed = msg.embeds[0].spliceFields(2, 1, {
 					name: 'SubQC Assignee',
 					value: 'Unassigned',
 				} as any);
@@ -391,6 +456,13 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					user.save((err) => {
 						if (err) logger.error(err);
 					});
+
+					if (link.updateRequest & (1 << 2)) {
+						link.updateRequest -= (1 << 2);
+						link.save((err) => {
+							if (err) logger.error(err);
+						});
+					}
 				}
 			} else {
 				const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
@@ -416,6 +488,22 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					previousAssignedUser.lastAssigned = new Date();
 					previousAssignedUser.save((err) => {
 						if (err) logger.error(err);
+					});
+				}
+
+				if (link.updateRequest & (1 << 2)) {
+					link.updateRequest -= (1 << 2);
+					link.save((err) => {
+						if (err) logger.error(err);
+					});
+				}
+				if (!(link.hasAssignment & (1 << 2))) {
+					link.hasAssignment += (1 << 2);
+					link.save((err) => {
+						if (err) {
+							logger.error(err);
+							throw err;
+						}
 					});
 				}
 
@@ -781,12 +869,13 @@ async function projectStaleCheckRequest(project: Project) {
 				if (discordUser) {
 					const embed = new MessageEmbed()
 						.setTitle(`Requesting update for: **${project.jiraId}**`)
-						.setDescription(`Last update on this project was <t:${Math.floor(new Date(project.lqcLastUpdate!).getTime() / 1000)}:>`);
+						.setDescription(`Last update on this project was <t:${Math.floor(new Date(project.lqcLastUpdate!).getTime() / 1000)}:>`)
+						.setURL(`https://jira.hlresort.community/browse/${project.jiraId}`);
 
 					const componentRow = new MessageActionRow()
 						.addComponents(
 							new MessageButton()
-								.setCustomId(`dontStaleLQC:${project.jiraId}`)
+								.setCustomId(`dontStale:${project.jiraId}`)
 								.setLabel('Do not stale project'),
 						)
 						.addComponents(
@@ -818,12 +907,13 @@ async function projectStaleCheckRequest(project: Project) {
 				if (discordUser) {
 					const embed = new MessageEmbed()
 						.setTitle(`Requesting update for: **${project.jiraId}**`)
-						.setDescription(`Last update on this project was <t:${Math.floor(new Date(project.sqcLastUpdate!).getTime() / 1000)}:>`);
+						.setDescription(`Last update on this project was <t:${Math.floor(new Date(project.sqcLastUpdate!).getTime() / 1000)}:>`)
+						.setURL(`https://jira.hlresort.community/browse/${project.jiraId}`);
 
 					const componentRow = new MessageActionRow()
 						.addComponents(
 							new MessageButton()
-								.setCustomId(`dontStaleSQC:${project.jiraId}`)
+								.setCustomId(`dontStale:${project.jiraId}`)
 								.setLabel('Do not stale project'),
 						)
 						.addComponents(
@@ -851,8 +941,8 @@ async function projectStaleCheckRequest(project: Project) {
 			if (discordUser) {
 				const embed = new MessageEmbed()
 					.setTitle(`Requesting update for: **${project.jiraId}**`)
-					.setDescription(`Last update on this project was <t:${Math.floor(new Date(project.lastUpdate).getTime() / 1000)}:>`);
-				// TODO: Set url
+					.setDescription(`Last update on this project was <t:${Math.floor(new Date(project.lastUpdate).getTime() / 1000)}:>`)
+					.setURL(`https://jira.hlresort.community/browse/${project.jiraId}`);
 
 				const componentRow = new MessageActionRow()
 					.addComponents(
