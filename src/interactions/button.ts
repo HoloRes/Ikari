@@ -277,6 +277,89 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			});
 		}
 	} else if (interaction.customId.startsWith('abandonProject:')) {
+		// TODO: Error handling
+		await interaction.deferReply();
 
+		const jiraKey = interaction.customId.split(':')[1];
+
+		const user = await UserInfo.findById(interaction.user.id).exec()
+			.catch((err) => {
+				logger.error(err);
+			});
+		if (!user) {
+			await interaction.editReply('Encountered an error, please try again.');
+			return;
+		}
+		if (user.assignedTo !== jiraKey) {
+			await interaction.editReply('You\'re not assigned to this project anymore.');
+			return;
+		}
+
+		const project = await IdLink.findOne({ jiraId: jiraKey }).exec();
+		if (!project) {
+			await interaction.editReply('Encountered an error, please try again.');
+			return;
+		}
+
+		if (user.assignedAs) {
+			if (user.assignedAs === 'lqc') {
+				await jiraClient.issues.doTransition({
+					issueIdOrKey: project.jiraId!,
+					fields: {
+						assignee: {
+							name: null,
+						},
+					},
+					transition: {
+						id: config.jira.transitions['Assign LQC'],
+					},
+				});
+
+				/* eslint-disable no-param-reassign */
+				project.staleCount += 1;
+				/* eslint-enable */
+				await project.save();
+
+				await interaction.editReply(`Abandoned project ${jiraKey}.`);
+			} else if (user.assignedAs === 'sqc') {
+				await jiraClient.issues.doTransition({
+					issueIdOrKey: project.jiraId!,
+					fields: {
+						assignee: {
+							name: null,
+						},
+					},
+					transition: {
+						id: config.jira.transitions['Assign SubQC'],
+					},
+				});
+
+				/* eslint-disable no-param-reassign */
+				project.staleCount += 1;
+				/* eslint-enable */
+				await project.save();
+
+				await interaction.editReply(`Abandoned project ${jiraKey}.`);
+			}
+		} else {
+			await jiraClient.issues.doTransition({
+				issueIdOrKey: project.jiraId!,
+				fields: {
+					assignee: {
+						name: null,
+					},
+				},
+				transition: {
+					id: config.jira.transitions.Assign,
+				},
+			});
+
+			/* eslint-disable no-param-reassign */
+			project.staleCount += 1;
+			/* eslint-enable */
+			await project.save();
+
+			await interaction.editReply(`Abandoned project ${jiraKey}.`);
+		}
 	}
 }

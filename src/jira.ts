@@ -994,10 +994,9 @@ async function projectUpdateRequestCheck(project: Document<any, any, Project> & 
 					});
 
 					await discordUser.send(`I have not received an update in time, considering abandoned and auto un-assigning you from: ${project.jiraId}`);
+
 					/* eslint-disable no-param-reassign */
 					project.staleCount += 1;
-					project.hasAssignment -= (1 << 1);
-					project.lqcLastUpdate = new Date();
 					/* eslint-enable */
 					await project.save();
 				}
@@ -1031,10 +1030,9 @@ async function projectUpdateRequestCheck(project: Document<any, any, Project> & 
 					});
 
 					await discordUser.send(`I have not received an update in time, considering abandoned and auto un-assigning you from: ${project.jiraId}`);
+
 					/* eslint-disable no-param-reassign */
 					project.staleCount += 1;
-					project.hasAssignment -= (1 << 2);
-					project.sqcLastUpdate = new Date();
 					/* eslint-enable */
 					await project.save();
 				}
@@ -1066,10 +1064,9 @@ async function projectUpdateRequestCheck(project: Document<any, any, Project> & 
 				});
 
 				await discordUser.send(`I have not received an update in time, considering abandoned and auto un-assigning you from: ${project.jiraId}`);
+
 				/* eslint-disable no-param-reassign */
 				project.staleCount += 1;
-				project.hasAssignment -= (1 << 0);
-				project.lastUpdate = new Date();
 				/* eslint-enable */
 				await project.save();
 			}
