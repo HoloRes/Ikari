@@ -15,6 +15,7 @@ ENV NODE_ENV=production
 WORKDIR /app
 COPY package.json .
 COPY package-lock.json .
+COPY strings.json .
 RUN npm ci \
     && cp -r /tmp/dist/ .
 RUN rm -rf /tmp
