@@ -155,7 +155,7 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 	} else if (interaction.commandName === 'setting') {
 		await interaction.deferReply({ ephemeral: true });
 
-		const settingName = interaction.options.getString('setting', true);
+		const settingName = interaction.options.getString('name', true);
 		const newValue = interaction.options.getString('value', false);
 
 		const setting = await Setting.findById(settingName).exec();

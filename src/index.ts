@@ -9,8 +9,6 @@ import { Version2Client } from 'jira.js';
 import helmet from 'helmet';
 import winston from 'winston';
 import LokiTransport from 'winston-loki';
-// Models
-import UserInfo from './models/UserInfo';
 
 // Config
 // eslint-disable-next-line import/order
@@ -38,6 +36,7 @@ export const jiraClient = new Version2Client({
 /* eslint-disable */
 import * as jira from './jira';
 import commandInteractionHandler from "./interactions/command";
+import updateRoles from "./lib/updateRoles";
 /* eslint-enable */
 
 // Logger
@@ -206,17 +205,7 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 client.on('guildMemberUpdate', async (_, member) => {
-	if (member.guild.id !== config.discord.guild) return;
-	let user = await UserInfo.findById(member.id).exec();
-	if (!user) {
-		user = new UserInfo({
-			_id: member.id,
-		});
-	}
-	user.roles = member.roles.cache.map((role) => role.id);
-	user.save((err) => {
-		logger.error(err);
-	});
+	updateRoles(member);
 });
 
 client.login(config.discord.authToken);
