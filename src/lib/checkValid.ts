@@ -52,30 +52,6 @@ export default async function checkValid(
 			});
 		return member.roles.cache.has(doc?._id);
 	}
-	if (status === 'PreQC') {
-		const doc = await GroupLink.findOne({ jiraName: 'Pre-Quality Control' })
-			.exec()
-			.catch((err: Error) => {
-				throw err;
-			});
-		return member.roles.cache.has(doc?._id);
-	}
-	if (status === 'Video Editing') {
-		const doc = await GroupLink.findOne({ jiraName: 'Video Editor' })
-			.exec()
-			.catch((err: Error) => {
-				throw err;
-			});
-		return member.roles.cache.has(doc?._id);
-	}
-	if (status === 'Quality Control') {
-		const doc = await GroupLink.findOne({ jiraName: 'Quality Control' })
-			.exec()
-			.catch((err: Error) => {
-				throw err;
-			});
-		return member.roles.cache.has(doc?._id);
-	}
 	if (status === 'Sub QC/Language QC') {
 		if (role === 'sqc') {
 			const doc = await GroupLink.findOne({ jiraName: 'Sub QC' })
@@ -96,6 +72,22 @@ export default async function checkValid(
 			}));
 			return roles.includes(true);
 		}
+	}
+	if (status === 'Video Editing') {
+		const doc = await GroupLink.findOne({ jiraName: 'Video Editor' })
+			.exec()
+			.catch((err: Error) => {
+				throw err;
+			});
+		return member.roles.cache.has(doc?._id);
+	}
+	if (status === 'Release QC') {
+		const doc = await GroupLink.findOne({ jiraName: 'Release QC' })
+			.exec()
+			.catch((err: Error) => {
+				throw err;
+			});
+		return member.roles.cache.has(doc?._id);
 	}
 	return false;
 }
