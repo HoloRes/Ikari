@@ -20,4 +20,4 @@ RUN npm ci \
 RUN rm -rf /tmp
 
 # Set start command
-CMD ["node", "index.js", "--trace-events-enabled", "--trace-warnings"]
+CMD ["node", "/app/dist/index.js", "--trace-events-enabled", "--trace-warnings"]
