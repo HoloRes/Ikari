@@ -14,7 +14,7 @@ export interface Project {
 	lqcLastUpdate?: Date;
 	sqcLastUpdate?: Date;
 	staleCount: number;
-	stale: boolean;
+	abandoned: boolean;
 	// Below is set using bit shifts (1 << k)
 	updateRequest: number;
 	hasAssignment: number;
@@ -33,7 +33,7 @@ const ProjectSchema = new mongoose.Schema({
 	lqcLastUpdate: { type: Date },
 	sqcLastUpdate: { type: Date },
 	staleCount: { type: Number, default: 0 },
-	stale: { type: Boolean, default: false },
+	abandoned: { type: Boolean, default: false },
 	updateRequest: { type: Number, default: 0 },
 	hasAssignment: { type: Number, default: 0 },
 });
