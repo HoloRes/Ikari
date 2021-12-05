@@ -108,7 +108,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 		const transitionName = req.body.transition && req.body.transition.name;
 
-		if (transitionName === 'Uploaded') {
+		if (transitionName === 'Uploaded' || transitionName === 'Abandon project') {
 			if (statusLink && link.discordMessageId) {
 				const channel = await client.channels.fetch(statusLink.channel)
 					.catch((err) => {
@@ -123,7 +123,8 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					});
 				await msg.delete();
 			}
-			link.finished = true;
+			if (transitionName === 'Uploaded') link.finished = true;
+			if (transitionName === 'Abandon project') link.abandoned = true;
 			link.save((err) => {
 				if (err) throw err;
 			});
