@@ -84,7 +84,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
 
 		// TODO: create button to pick up, somehow needs to run as the user that clicked it
-		const msg = await channel.send({ content: 'Pick up this project in Jira', embeds: [embed] })
+		const msg = await channel.send({ content: 'A new project is available and can be picked up in Jira', embeds: [embed] })
 			.catch((err) => {
 				throw new Error(err);
 			});
