@@ -1,5 +1,10 @@
 FROM node:16-buster-slim
 
+ARG sha
+ENV COMMIT_SHA=$sha
+ARG environment
+ENV ENVIRONMENT=$environment
+
 # Create a folder for compiling
 WORKDIR /tmp
 COPY package.json .

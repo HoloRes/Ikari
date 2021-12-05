@@ -16,6 +16,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		await interaction.deferReply({ ephemeral: true });
 		const issueKey = interaction.customId.split(':')[1];
 
+		// Get jira info from the OAuth server
 		const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
 			params: { id: interaction.user.id },
 			auth: {
@@ -27,6 +28,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			throw new Error(err);
 		}) as AxiosResponse<any>;
 
+		// Get user doc and update with the new assigned issue.
 		let userInfo = await UserInfo.findById(interaction.user.id).exec();
 		if (!userInfo) {
 			userInfo = new UserInfo({
@@ -38,6 +40,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		// @ts-expect-error TS thinks that isAssigned is possibly false
 		userInfo.assignedTo = issueId;
 
+		// Update the project info in the db
 		const link = await IdLink.findOne({ discordMessageId: interaction.message.id }).lean().exec()
 			.catch((err: Error) => {
 				interaction.editReply(strings.assignmentFail);
@@ -61,6 +64,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		const languages = interaction.message.embeds[0].fields![3].value.split(', ');
 		const status = interaction.message.embeds[0].fields![0].value;
 
+		// Check if the user can be assigned to the project at the current status
 		const valid = await checkValid(member, status, languages)
 			.catch((err) => {
 				logger.error(err);
@@ -70,6 +74,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		if (!valid) {
 			await interaction.editReply(strings.assignmentNotPossible);
 		} else {
+			// Use Jira to assign, so the webhook gets triggered and handles the rest.
 			// TODO: Error handling
 			await jiraClient.issues.doTransition({
 				issueIdOrKey: issueKey,

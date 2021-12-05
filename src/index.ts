@@ -15,7 +15,6 @@ import LokiTransport from 'winston-loki';
 const config = require('../config.json');
 
 // Pre-init
-// TODO: Add Sentry and Loki+Winston
 // Mongoose
 export const conn1 = mongoose.createConnection(`mongodb+srv://${config.mongodb.username}:${config.mongodb.password}@${config.mongodb.host}/${config.mongodb.database}`);
 
@@ -88,7 +87,17 @@ app.get('/heartbeat', (req, res) => {
 
 // Discord
 client.on('ready', () => {
-	logger.info('READY');
+	logger.info(`Bot started, running: ${process.env.COMMIT_SHA ?? 'unknown'}`);
+
+	// Show commit SHA in playing status when not in production
+	if (process.env.ENVIRONMENT !== 'production') {
+		client.user!.setPresence({
+			activities: [{
+				name: `version: ${process.env.COMMIT_SHA ?? 'unknown'}`,
+				type: 'PLAYING',
+			}],
+		});
+	}
 });
 
 // Command handler
@@ -205,6 +214,7 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 client.on('guildMemberUpdate', async (_, member) => {
+	// Call function to update the user's document in the db with all their roles.
 	updateRoles(member);
 });
 

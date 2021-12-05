@@ -102,6 +102,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			if (err) throw err;
 		});
 	} else {
+		// Get the project from the db
 		const link = await IdLink.findOne({ jiraId: req.body.issue.id })
 			.exec()
 			.catch((err) => {
@@ -114,9 +115,35 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				throw err;
 			});
 
-		if (!statusLink) {
+		const transitionName = req.body.transition && req.body.transition.name;
+
+		if (transitionName === 'Uploaded') {
+			if (statusLink && link.discordMessageId) {
+				const channel = await client.channels.fetch(statusLink.channel)
+					.catch((err) => {
+						throw new Error(err);
+					}) as unknown as BaseGuildTextChannel | null;
+
+				if (channel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${statusLink.channel} is not a guild text channel`);
+
+				const msg = await channel.messages.fetch(link.discordMessageId)
+					.catch((err) => {
+						throw new Error(err);
+					});
+				await msg.delete();
+			}
+			link.finished = true;
+			link.save((err) => {
+				if (err) throw err;
+			});
+			return;
+		}
+
+		// If the status doesn't have a Discord channel linked to it or the project has no message
+		if (!statusLink || !link.discordMessageId) {
 			logger.warn(`No link found for: ${link.status}`);
 			// TODO: cleanup
+			// Only do something with the project if there's a status change
 			if (req.body.issue.fields!.status.name !== link.status) {
 				const row = new MessageActionRow()
 					.addComponents(
@@ -127,9 +154,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 							.setEmoji('819518919739965490'),
 					);
 
+				// Unassign all users who were assigned in the previous status
 				const assignedUsers = await UserInfo.find({ assignedTo: req.body.issue.key }).exec();
-				// eslint-disable-next-line array-callback-return
-				assignedUsers.map((user) => {
+				assignedUsers.forEach((user) => {
 					/* eslint-disable no-param-reassign */
 					user.isAssigned = false;
 					user.lastAssigned = new Date();
@@ -140,6 +167,20 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					});
 					/* eslint-enable */
 				});
+
+				// If the new status is uploaded, we only need to update the document in the db
+				if (req.body.issue.fields!.status.name === 'Uploaded') {
+					link.discordMessageId = undefined;
+					link.status = req.body.issue.fields!.status.name;
+					link.lastStatusChange = new Date();
+					link.lastUpdate = new Date();
+					link.updateRequest = 0;
+					link.hasAssignment = 0;
+					link.finished = true;
+
+					await link.save();
+					return;
+				}
 
 				// eslint-disable-next-line max-len
 				const newStatusLink = await StatusLink.findById(req.body.issue.fields!.status.name).lean().exec()
@@ -233,16 +274,6 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					link.hasAssignment = 0;
 
 					await link.save();
-				} else if (req.body.issue.fields!.status.name === 'Uploaded') {
-					link.discordMessageId = undefined;
-					link.status = req.body.issue.fields!.status.name;
-					link.lastStatusChange = new Date();
-					link.lastUpdate = new Date();
-					link.updateRequest = 0;
-					link.hasAssignment = 0;
-					link.finished = true;
-
-					await link.save();
 				} else {
 					let user: any | undefined;
 					if (req.body.issue.fields!.assignee !== null) {
@@ -300,8 +331,6 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			.catch((err) => {
 				throw new Error(err);
 			});
-
-		const transitionName = req.body.transition && req.body.transition.name;
 
 		if (transitionName === 'Assign') {
 			if (req.body.issue.fields!.assignee === null) {
@@ -361,7 +390,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				const previousAssignedUser = await UserInfo.findOne({
 					isAssigned: true,
 					assignedTo: req.body.issue.key,
-				});
+				}).exec();
 				if (previousAssignedUser) {
 					previousAssignedUser.isAssigned = false;
 					previousAssignedUser.assignedAs = undefined;
@@ -419,12 +448,6 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						sendUserAssignedEmbed(link, fetchedUser);
 					}).catch((err) => logger.error(err));
 			}
-		} else if (transitionName === 'Finish') {
-			msg.delete();
-			link.finished = true;
-			link.save((err) => {
-				if (err) throw err;
-			});
 		} else if (transitionName === 'Send to Ikari') {
 			await jiraClient.issues.doTransition({
 				issueIdOrKey: req.body.issue.key!,
@@ -518,7 +541,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					isAssigned: true,
 					assignedTo: req.body.issue.key,
 					assignedAs: 'lqc',
-				});
+				}).exec();
 				if (previousAssignedUser) {
 					previousAssignedUser.isAssigned = false;
 					previousAssignedUser.assignedAs = undefined;
@@ -644,7 +667,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					isAssigned: true,
 					assignedTo: req.body.issue.key,
 					assignedAs: 'sqc',
-				});
+				}).exec();
 				if (previousAssignedUser) {
 					previousAssignedUser.isAssigned = false;
 					previousAssignedUser.assignedAs = undefined;
@@ -693,7 +716,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					}
 				});
 
-				const embed = msg.embeds[0].spliceFields(2, 2, {
+				const embed = msg.embeds[0].spliceFields(2, 1, {
 					name: 'SubQC Assignee',
 					value: `<@${user._id}>`,
 				} as any);
@@ -898,18 +921,6 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					await link.save();
 
 					msg.delete();
-				} else if (req.body.issue.fields!.status.name === 'Uploaded') {
-					link.discordMessageId = undefined;
-					link.status = req.body.issue.fields!.status.name;
-					link.lastStatusChange = new Date();
-					link.lastUpdate = new Date();
-					link.updateRequest = 0;
-					link.hasAssignment = 0;
-					link.finished = true;
-
-					await link.save();
-
-					msg.delete();
 				} else {
 					let user: any | undefined;
 					if (req.body.issue.fields!.assignee !== null) {
@@ -977,11 +988,7 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 			$not: hiatusRole?._id ?? '0000',
 		},
 		isAssigned: false,
-	}, null, {
-		sort: {
-			lastAssigned: 'desc',
-		},
-	}).exec();
+	}).sort({ lastAssigned: 'desc' }).exec();
 
 	const guild = await client.guilds.fetch(config.discord.guild)
 		.catch((err) => {
@@ -1322,6 +1329,13 @@ cron.schedule('0 * * * *', async () => {
 		],
 		$not: {
 			$or: [
+				// Ignore certain statuses and projects that do not have a message in Discord
+				{
+					status: 'Open',
+				},
+				{
+					status: 'Being clipped',
+				},
 				{
 					status: 'Ready for release',
 				},
@@ -1331,6 +1345,7 @@ cron.schedule('0 * * * *', async () => {
 			],
 		},
 		finished: false,
+		abandoned: false,
 		// TODO: Make the lastUpdate query dynamic
 		lastUpdate: { $lte: new Date(Date.now() - (3 * 24 * 3600 * 1000)) },
 	}).exec();
