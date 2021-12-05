@@ -56,7 +56,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           build-args: |
-            sha=${{ github.sha }}
+            sha=${{ github.event.pull_request.head.sha }}
             environment=staging
           push: true
           tags: ${{ steps.docker_meta.outputs.tags }}
