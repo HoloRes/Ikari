@@ -79,21 +79,12 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			.setColor('#0052cc')
 			.setDescription(req.body.issue.fields!.summary ?? 'No description available')
 			.addField('Status', req.body.issue.fields!.status.name)
-			.addField('Assignee', 'Unassigned')
 			.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
 			.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
 			.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
 
-		const row = new MessageActionRow()
-			.addComponents(
-				new MessageButton()
-					.setCustomId(`assignToMe:${req.body.issue.key}`)
-					.setLabel('Assign to me')
-					.setStyle('SUCCESS')
-					.setEmoji('819518919739965490'),
-			);
-
-		const msg = await channel.send({ embeds: [embed], components: [row] })
+		// TODO: create button to pick up, somehow needs to run as the user that clicked it
+		const msg = await channel.send({ content: 'Pick up this project in Jira', embeds: [embed] })
 			.catch((err) => {
 				throw new Error(err);
 			});
