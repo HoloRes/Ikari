@@ -93,7 +93,7 @@ client.on('ready', () => {
 	if (process.env.ENVIRONMENT !== 'production') {
 		client.user!.setPresence({
 			activities: [{
-				name: `version: ${process.env.COMMIT_SHA ?? 'unknown'}`,
+				name: `version: ${process.env.COMMIT_SHA?.substring(0, 7) ?? 'unknown'}`,
 				type: 'PLAYING',
 			}],
 		});
