@@ -129,6 +129,33 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				if (err) throw err;
 			});
 			return;
+		} if (transitionName === 'Send to Ikari') {
+			await jiraClient.issues.doTransition({
+				issueIdOrKey: req.body.issue.key!,
+				transition: {
+					name: 'Send to translator',
+				},
+			});
+
+			const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+				params: { key: req.body.user.key },
+				auth: {
+					username: config.oauthServer.clientId,
+					password: config.oauthServer.clientSecret,
+				},
+			}).catch((err) => {
+				logger.error(err.response.data);
+				throw new Error(err);
+			}) as AxiosResponse<any>;
+
+			const discordUser = await client.users.fetch(user._id)
+				.catch((err) => {
+					logger.error(err);
+					throw err;
+				});
+
+			discordUser.send(strings.IkariClippingNotAvailable);
+			return;
 		}
 
 		// If the status doesn't have a Discord channel linked to it or the project has no message
@@ -440,32 +467,6 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						sendUserAssignedEmbed(link, fetchedUser);
 					}).catch((err) => logger.error(err));
 			}
-		} else if (transitionName === 'Send to Ikari') {
-			await jiraClient.issues.doTransition({
-				issueIdOrKey: req.body.issue.key!,
-				transition: {
-					name: 'Send to translator',
-				},
-			});
-
-			const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
-				params: { key: req.body.user.key },
-				auth: {
-					username: config.oauthServer.clientId,
-					password: config.oauthServer.clientSecret,
-				},
-			}).catch((err) => {
-				logger.error(err.response.data);
-				throw new Error(err);
-			}) as AxiosResponse<any>;
-
-			const discordUser = await client.users.fetch(user._id)
-				.catch((err) => {
-					logger.error(err);
-					throw err;
-				});
-
-			discordUser.send(strings.IkariClippingNotAvailable);
 		} else if (transitionName === 'Assign LQC') {
 			if (req.body.issue.fields![config.jira.fields.LQCAssignee] === null) {
 				const row = new MessageActionRow()
@@ -977,7 +978,7 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 	const available = await UserInfo.find({
 		roles: {
 			// Set to something impossible when the hiatus role cannot be found
-			$not: hiatusRole?._id ?? '0000',
+			$ne: hiatusRole?._id ?? '0000',
 		},
 		isAssigned: false,
 	}).sort({ lastAssigned: 'desc' }).exec();
