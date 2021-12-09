@@ -36,6 +36,7 @@ export const jiraClient = new Version2Client({
 import * as jira from './jira';
 import commandInteractionHandler from "./interactions/command";
 import updateRoles from "./lib/updateRoles";
+import buttonInteractionHandler from "./interactions/button";
 /* eslint-enable */
 
 // Logger
@@ -211,6 +212,7 @@ client.on('messageCreate', (message) => {
 
 client.on('interactionCreate', async (interaction) => {
 	if (interaction.isCommand()) await commandInteractionHandler(interaction);
+	if (interaction.isButton()) await buttonInteractionHandler(interaction);
 });
 
 client.on('guildMemberUpdate', async (_, member) => {

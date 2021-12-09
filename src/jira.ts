@@ -106,7 +106,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				throw err;
 			});
 
-		const transitionName = req.body.transition && req.body.transition.name;
+		const transitionName = req.body.transition?.transitionName;
 
 		if (req.body.issue.fields!.status.name === 'Open') {
 			if (link.discordMessageId && statusLink) {
@@ -121,6 +121,31 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					.catch((err) => {
 						throw new Error(err);
 					});
+				await msg.delete();
+			} else if (link.discordMessageId) {
+				// eslint-disable-next-line max-len
+				const channelLink = await StatusLink.findById(req.body.issue.fields!.status.name).lean().exec()
+					.catch((err) => {
+						throw new Error(err);
+					});
+
+				if (!channelLink) {
+					logger.warn(`No channel link for ${req.body.issue.fields!.status.name} found!`);
+					return;
+				}
+
+				const channel = await client.channels.fetch(channelLink.channel)
+					.catch((err) => {
+						throw new Error(err);
+					}) as unknown as BaseGuildTextChannel | null;
+
+				if (channel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${channelLink.channel} is not a guild text channel`);
+
+				const msg = await channel.messages.fetch(link.discordMessageId)
+					.catch((err) => {
+						logger.error(err);
+					});
+				if (!msg) return;
 				await msg.delete();
 			}
 
@@ -157,6 +182,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					throw new Error(err);
 				});
 			link.discordMessageId = msg.id;
+			link.status = req.body.issue.fields!.status.name;
 			link.save((err) => {
 				if (err) throw err;
 			});
@@ -191,6 +217,8 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				transition: {
 					id: config.jira.transitions['Send to translator'],
 				},
+			}).catch((err) => {
+				throw err;
 			});
 
 			const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {

@@ -25,9 +25,6 @@ dev:
   # Port-forwarding lets you access your application via localhost on your local machine
   ports:
   - imageSelector: ${IMAGE} # Select the Pod that runs our `${IMAGE}`
-    forward:
-    - port: 8080
-      remotePort: 80
 
   # `dev.open` tells DevSpace to open certain URLs as soon as they return HTTP status 200
   # Since we configured port-forwarding, we can use a localhost address here to access our application

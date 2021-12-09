@@ -37,8 +37,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		}
 		userInfo.lastAssigned = new Date();
 		userInfo.isAssigned = true;
-		// @ts-expect-error TS thinks that isAssigned is possibly false
-		userInfo.assignedTo = issueId;
+		userInfo.assignedTo = issueKey;
 
 		// Update the project info in the db
 		const link = await IdLink.findOne({ discordMessageId: interaction.message.id }).lean().exec()
@@ -61,6 +60,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			return;
 		}
 
+		// ! TODO: Replace these with Jira calls, in other places too!
 		const languages = interaction.message.embeds[0].fields![3].value.split(', ');
 		const status = interaction.message.embeds[0].fields![0].value;
 
