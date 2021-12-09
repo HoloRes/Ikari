@@ -108,6 +108,61 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 		const transitionName = req.body.transition && req.body.transition.name;
 
+		if (req.body.issue.fields!.status.name === 'Open') {
+			if (link.discordMessageId && statusLink) {
+				const channel = await client.channels.fetch(statusLink.channel)
+					.catch((err) => {
+						throw new Error(err);
+					}) as unknown as BaseGuildTextChannel | null;
+
+				if (channel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${statusLink.channel} is not a guild text channel`);
+
+				const msg = await channel.messages.fetch(link.discordMessageId)
+					.catch((err) => {
+						throw new Error(err);
+					});
+				await msg.delete();
+			}
+
+			// eslint-disable-next-line max-len
+			const channelLink = await StatusLink.findById(req.body.issue.fields!.status.name).lean().exec()
+				.catch((err) => {
+					throw new Error(err);
+				});
+
+			if (!channelLink) {
+				logger.warn(`No channel link for ${req.body.issue.fields!.status.name} found!`);
+				return;
+			}
+
+			const channel = await client.channels.fetch(channelLink.channel)
+				.catch((err) => {
+					throw new Error(err);
+				}) as unknown as BaseGuildTextChannel | null;
+
+			if (channel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${channelLink.channel} is not a guild text channel`);
+
+			const embed = new MessageEmbed()
+				.setTitle(`${req.body.issue.key}`)
+				.setColor('#0052cc')
+				.setDescription(req.body.issue.fields!.summary ?? 'No description available')
+				.addField('Status', req.body.issue.fields!.status.name)
+				.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
+				.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
+				.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
+
+			// TODO: create button to pick up, somehow needs to run as the user that clicked it
+			const msg = await channel.send({ content: 'A new project is available and can be picked up in Jira', embeds: [embed] })
+				.catch((err) => {
+					throw new Error(err);
+				});
+			link.discordMessageId = msg.id;
+			link.save((err) => {
+				if (err) throw err;
+			});
+			return;
+		}
+
 		if (transitionName === 'Uploaded' || transitionName === 'Abandon project') {
 			if (statusLink && link.discordMessageId) {
 				const channel = await client.channels.fetch(statusLink.channel)
@@ -129,11 +184,12 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				if (err) throw err;
 			});
 			return;
-		} if (transitionName === 'Send to Ikari') {
+		}
+		if (transitionName === 'Send to Ikari') {
 			await jiraClient.issues.doTransition({
 				issueIdOrKey: req.body.issue.key!,
 				transition: {
-					name: 'Send to translator',
+					id: config.jira.transitions['Send to translator'],
 				},
 			});
 
