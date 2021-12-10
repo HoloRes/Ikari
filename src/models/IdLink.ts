@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import { conn1 } from '../index';
 
 export interface Project {
-	jiraId?: string;
+	jiraKey?: string;
 	discordMessageId?: string;
 	type: 'translation' | 'artist';
 	status: string;
@@ -22,7 +22,7 @@ export interface Project {
 
 // Schema
 const ProjectSchema = new mongoose.Schema({
-	jiraId: String,
+	jiraKey: String,
 	discordMessageId: String,
 	type: { type: String, enum: ['translation', 'artist'], required: true },
 	status: { type: String, required: true },

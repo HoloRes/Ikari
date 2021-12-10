@@ -23,13 +23,9 @@ deployments:
 dev:
   # `dev.ports` specifies all ports that should be forwarded while `devspace dev` is running
   # Port-forwarding lets you access your application via localhost on your local machine
-  ports:
-  - imageSelector: ${IMAGE} # Select the Pod that runs our `${IMAGE}`
 
   # `dev.open` tells DevSpace to open certain URLs as soon as they return HTTP status 200
   # Since we configured port-forwarding, we can use a localhost address here to access our application
-  open:
-  - url: http://localhost:8080
 
   # `dev.sync` configures a file sync between our Pods in k8s and your local project files
   sync:

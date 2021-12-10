@@ -4,13 +4,14 @@ import { jiraClient } from '../index';
 
 export default async function sendUserAssignedEmbed(project: Project, user: Discord.User) {
 	const issue = await jiraClient.issues.getIssue({
-		issueIdOrKey: project.jiraId!,
+		issueIdOrKey: project.jiraKey!,
 	});
 
 	const componentRow = new MessageActionRow()
 		.addComponents(
 			new MessageButton()
-				.setCustomId(`abandonProject:${project.jiraId}`)
+				.setStyle('DANGER')
+				.setCustomId(`abandonProject:${project.jiraKey}`)
 				.setLabel('Abandon project'),
 		);
 
@@ -19,8 +20,8 @@ export default async function sendUserAssignedEmbed(project: Project, user: Disc
 		.setDescription('You have been assigned to a new project')
 		.setColor('#0052cc')
 		.addField('Description', issue.fields.description ?? 'No description available')
-		.setFooter(issue.key)
-		.setURL(`https://jira.hlresort.community/browse/${issue.key}`);
+		.setFooter(project.jiraKey!)
+		.setURL(`https://jira.hlresort.community/browse/${project.jiraKey}`);
 
 	await user.send({ embeds: [embed], components: [componentRow] });
 }

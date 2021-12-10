@@ -9,10 +9,9 @@ const config = require('../../config.json');
 const strings = require('../../strings.json');
 
 export default async function buttonInteractionHandler(interaction: Discord.ButtonInteraction) {
-	if (!interaction.guild) return;
-
 	// TODO: Add interaction handlers for artist
 	if (interaction.customId.startsWith('assignToMe:')) {
+		if (!interaction.guild) return;
 		await interaction.deferReply({ ephemeral: true });
 		const issueKey = interaction.customId.split(':')[1];
 
@@ -60,9 +59,16 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			return;
 		}
 
-		// ! TODO: Replace these with Jira calls, in other places too!
-		const languages = interaction.message.embeds[0].fields![3].value.split(', ');
-		const status = interaction.message.embeds[0].fields![0].value;
+		// TODO: Error handling
+		const issue = await jiraClient.issues.getIssue({ issueIdOrKey: issueKey });
+
+		type JiraField = {
+			value: string;
+		};
+
+		// eslint-disable-next-line max-len
+		const languages = issue.fields[config.jira.fields.langs].map((language: JiraField) => language.value);
+		const status = issue.fields.status.name!;
 
 		// Check if the user can be assigned to the project at the current status
 		const valid = await checkValid(member, status, languages)
@@ -91,6 +97,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			await interaction.editReply(strings.assignmentSuccess);
 		}
 	} else if (interaction.customId.startsWith('assignLQCToMe:')) {
+		if (!interaction.guild) return;
 		await interaction.deferReply({ ephemeral: true });
 		const issueKey = interaction.customId.split(':')[1];
 
@@ -125,7 +132,15 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			return;
 		}
 
-		const languages = interaction.message.embeds[0].fields![3].value.split(', ');
+		// TODO: Error handling
+		const issue = await jiraClient.issues.getIssue({ issueIdOrKey: issueKey });
+
+		type JiraField = {
+			value: string;
+		};
+
+		// eslint-disable-next-line max-len
+		const languages = issue.fields[config.jira.fields.langs].map((language: JiraField) => language.value);
 
 		const valid = await checkValid(member, 'Sub QC/Language QC', languages, 'lqc')
 			.catch((err) => {
@@ -151,6 +166,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			await interaction.editReply(strings.assignmentNotPossible);
 		}
 	} else if (interaction.customId.startsWith('assignSQCToMe:')) {
+		if (!interaction.guild) return;
 		await interaction.deferReply({ ephemeral: true });
 		const issueKey = interaction.customId.split(':')[1];
 
@@ -223,11 +239,11 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			return;
 		}
 		if (user.assignedTo !== jiraKey) {
-			await interaction.editReply('You\'re not assigned to this project anymore.');
+			await interaction.editReply('You\'re currently not assigned to this project anymore, so cannot do this action.');
 			return;
 		}
 
-		const project = await IdLink.findOne({ jiraId: jiraKey }).exec();
+		const project = await IdLink.findOne({ jiraKey }).exec();
 		if (!project) {
 			await interaction.editReply('Encountered an error, please try again.');
 			return;
@@ -295,12 +311,13 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			await interaction.editReply('Encountered an error, please try again.');
 			return;
 		}
+
 		if (user.assignedTo !== jiraKey) {
-			await interaction.editReply('You\'re not assigned to this project anymore.');
+			await interaction.editReply('You\'re currently not assigned to this project anymore, so cannot do this action.');
 			return;
 		}
 
-		const project = await IdLink.findOne({ jiraId: jiraKey }).exec();
+		const project = await IdLink.findOne({ jiraKey }).exec();
 		if (!project) {
 			await interaction.editReply('Encountered an error, please try again.');
 			return;
@@ -309,59 +326,47 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		if (user.assignedAs) {
 			if (user.assignedAs === 'lqc') {
 				await jiraClient.issues.doTransition({
-					issueIdOrKey: project.jiraId!,
+					issueIdOrKey: project.jiraKey!,
 					fields: {
-						assignee: {
-							name: null,
-						},
+						[config.jira.fields.LQCAssignee]: null,
 					},
 					transition: {
 						id: config.jira.transitions['Assign LQC'],
 					},
 				});
 
-				/* eslint-disable no-param-reassign */
 				project.staleCount += 1;
-				/* eslint-enable */
 				await project.save();
 
 				await interaction.editReply(`Abandoned project ${jiraKey}.`);
 			} else if (user.assignedAs === 'sqc') {
 				await jiraClient.issues.doTransition({
-					issueIdOrKey: project.jiraId!,
+					issueIdOrKey: project.jiraKey!,
 					fields: {
-						assignee: {
-							name: null,
-						},
+						[config.jira.fields.SubQCAssignee]: null,
 					},
 					transition: {
 						id: config.jira.transitions['Assign SubQC'],
 					},
 				});
 
-				/* eslint-disable no-param-reassign */
 				project.staleCount += 1;
-				/* eslint-enable */
 				await project.save();
 
 				await interaction.editReply(`Abandoned project ${jiraKey}.`);
 			}
 		} else {
 			await jiraClient.issues.doTransition({
-				issueIdOrKey: project.jiraId!,
+				issueIdOrKey: project.jiraKey!,
 				fields: {
-					assignee: {
-						name: null,
-					},
+					assignee: null,
 				},
 				transition: {
 					id: config.jira.transitions.Assign,
 				},
 			});
 
-			/* eslint-disable no-param-reassign */
 			project.staleCount += 1;
-			/* eslint-enable */
 			await project.save();
 
 			await interaction.editReply(`Abandoned project ${jiraKey}.`);
