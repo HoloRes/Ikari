@@ -1165,7 +1165,7 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 	}
 }
 
-async function projectStaleCheckRequest(project: Project) {
+async function projectStaleCheckRequest(project: Document<any, any, Project> & Project) {
 	if (project.status === 'Sub QC/Language QC') {
 		const compareDate = new Date(Date.now() - 4 * 24 * 3600 * 1000);
 
@@ -1206,6 +1206,9 @@ async function projectStaleCheckRequest(project: Project) {
 					await discordUser.send({ embeds: [embed], components: [componentRow] });
 					user.updateRequested = new Date();
 					await user.save((err) => {
+						if (err) logger.error(err);
+					});
+					await project.save((err) => {
 						if (err) logger.error(err);
 					});
 				}
@@ -1250,6 +1253,9 @@ async function projectStaleCheckRequest(project: Project) {
 					await user.save((err) => {
 						if (err) logger.error(err);
 					});
+					await project.save((err) => {
+						if (err) logger.error(err);
+					});
 				}
 			}
 		}
@@ -1286,6 +1292,9 @@ async function projectStaleCheckRequest(project: Project) {
 				await discordUser.send({ embeds: [embed], components: [componentRow] });
 				user.updateRequested = new Date();
 				await user.save((err) => {
+					if (err) logger.error(err);
+				});
+				await project.save((err) => {
 					if (err) logger.error(err);
 				});
 			}
