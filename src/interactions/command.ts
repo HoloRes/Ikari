@@ -120,20 +120,24 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 				.addField('Status', issue.fields!.status.name)
 				.addField('LQC Assignee', LQCAssignee, true)
 				.addField('SubQC Assignee', SubQCAssignee, true)
-				.addField('LQC Status',
+				.addField(
+					'LQC Status',
 					(
 						// eslint-disable-next-line no-nested-ternary
 						(issue.fields![config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'LQC_done') ? 'Done' : (
 							issue.fields![config.jira.fields.LQCAssignee] === null ? 'To do' : 'In progress'
 						) ?? 'To do'
-					))
-				.addField('SubQC Status',
+					),
+				)
+				.addField(
+					'SubQC Status',
 					(
 						// eslint-disable-next-line no-nested-ternary
 						(issue.fields![config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done') ? 'Done' : (
 							issue.fields![config.jira.fields.SubQCAssignee] === null ? 'To do' : 'In progress'
 						) ?? 'To do'
-					))
+					),
+				)
 				.addField('Source', `[link](${issue.fields![config.jira.fields.videoLink]})`)
 				.addField('Timestamp(s)', timestamps)
 				.setFooter(`Due date: ${issue.fields!.duedate || 'unknown'}`)

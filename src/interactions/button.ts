@@ -1,5 +1,6 @@
 import Discord from 'discord.js';
 import axios, { AxiosResponse } from 'axios';
+import format from 'string-template';
 import { jiraClient, logger } from '../index';
 import IdLink from '../models/IdLink';
 import UserInfo from '../models/UserInfo';
@@ -108,9 +109,9 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				password: config.oauthServer.clientSecret,
 			},
 		}).catch((err) => {
-			logger.log(err.response.data);
+			logger.error(err.response.data);
 			throw new Error(err);
-		}) as AxiosResponse<any>;
+		}) as AxiosResponse;
 
 		const link = await IdLink.findOne({ discordMessageId: interaction.message.id }).lean().exec()
 			.catch((err: Error) => {
@@ -177,9 +178,9 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				password: config.oauthServer.clientSecret,
 			},
 		}).catch((err) => {
-			logger.info(err.response.data);
+			logger.error(err.response.data);
 			throw new Error(err);
-		}) as AxiosResponse<any>;
+		}) as AxiosResponse;
 
 		const link = await IdLink.findOne({ discordMessageId: interaction.message.id }).lean().exec()
 			.catch((err: Error) => {
@@ -235,24 +236,24 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				logger.error(err);
 			});
 		if (!user) {
-			await interaction.editReply('Encountered an error, please try again.');
+			await interaction.editReply(strings.unknownError);
 			return;
 		}
 		if (user.assignedTo !== jiraKey) {
-			await interaction.editReply('You\'re currently not assigned to this project anymore, so cannot do this action.');
+			await interaction.editReply(strings.notAssignedAnymore);
 			return;
 		}
 
 		const project = await IdLink.findOne({ jiraKey }).exec();
 		if (!project) {
-			await interaction.editReply('Encountered an error, please try again.');
+			await interaction.editReply(strings.unknownError);
 			return;
 		}
 
 		if (user.assignedAs) {
 			if (user.assignedAs === 'lqc') {
 				if (!(project.updateRequest & (1 << 1))) {
-					await interaction.editReply('Request is not active anymore.');
+					await interaction.editReply(strings.requestNotActive);
 					return;
 				}
 				project.lqcLastUpdate = new Date();
@@ -260,14 +261,14 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				project.save(async (err) => {
 					if (err) {
 						logger.error(err);
-						await interaction.editReply('Encountered an error, please try again.');
+						await interaction.editReply(strings.unknownError);
 						return;
 					}
-					await interaction.editReply('Update received, not staling project.');
+					await interaction.editReply(strings.updateReceivedFromUser);
 				});
 			} else if (user.assignedAs === 'sqc') {
 				if (!(project.updateRequest & (1 << 2))) {
-					await interaction.editReply('Request is not active anymore.');
+					await interaction.editReply(strings.requestNotActive);
 					return;
 				}
 				project.sqcLastUpdate = new Date();
@@ -275,15 +276,15 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				project.save(async (err) => {
 					if (err) {
 						logger.error(err);
-						await interaction.editReply('Encountered an error, please try again.');
+						await interaction.editReply(strings.unknownError);
 						return;
 					}
-					await interaction.editReply('Update received, not staling project.');
+					await interaction.editReply(strings.updateReceivedFromUser);
 				});
 			}
 		} else {
 			if (!(project.updateRequest & (1 << 0))) {
-				await interaction.editReply('Request is not active anymore.');
+				await interaction.editReply(strings.requestNotActive);
 				return;
 			}
 			project.sqcLastUpdate = new Date();
@@ -291,10 +292,10 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			project.save(async (err) => {
 				if (err) {
 					logger.error(err);
-					await interaction.editReply('Encountered an error, please try again.');
+					await interaction.editReply(strings.unknownError);
 					return;
 				}
-				await interaction.editReply('Update received, not staling project.');
+				await interaction.editReply(strings.updateReceivedFromUser);
 			});
 		}
 	} else if (interaction.customId.startsWith('abandonProject:')) {
@@ -308,18 +309,18 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				logger.error(err);
 			});
 		if (!user) {
-			await interaction.editReply('Encountered an error, please try again.');
+			await interaction.editReply(strings.unknownError);
 			return;
 		}
 
 		if (user.assignedTo !== jiraKey) {
-			await interaction.editReply('You\'re currently not assigned to this project anymore, so cannot do this action.');
+			await interaction.editReply(strings.notAssignedAnymore);
 			return;
 		}
 
 		const project = await IdLink.findOne({ jiraKey }).exec();
 		if (!project) {
-			await interaction.editReply('Encountered an error, please try again.');
+			await interaction.editReply(strings.unknownError);
 			return;
 		}
 
@@ -338,7 +339,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				project.staleCount += 1;
 				await project.save();
 
-				await interaction.editReply(`Abandoned project ${jiraKey}.`);
+				await interaction.editReply(format(strings.projectAbandoned, { jiraKey }));
 			} else if (user.assignedAs === 'sqc') {
 				await jiraClient.issues.doTransition({
 					issueIdOrKey: project.jiraKey!,
@@ -353,7 +354,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				project.staleCount += 1;
 				await project.save();
 
-				await interaction.editReply(`Abandoned project ${jiraKey}.`);
+				await interaction.editReply(format(strings.projectAbandoned, { jiraKey }));
 			}
 		} else {
 			await jiraClient.issues.doTransition({
@@ -369,7 +370,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			project.staleCount += 1;
 			await project.save();
 
-			await interaction.editReply(`Abandoned project ${jiraKey}.`);
+			await interaction.editReply(format(strings.projectAbandoned, { jiraKey }));
 		}
 	}
 }

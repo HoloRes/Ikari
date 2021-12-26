@@ -5,5 +5,12 @@
   "assignmentSuccess": "(To change): Succesfully assigned this issue to you.",
   "noJiraAccount": "You gotta have an account to use this stupid. Log in to your Jira account once to link it, please and thanks.",
   "IkariClippingNotAvailable": "(To change): Ikari isn't able yet to automatically download clips, so you'll have to do it yourself.",
-  "interactionMemberNotFound": "Uh, apparently no one clicked on the button? Try again."
+  "interactionMemberNotFound": "Uh, apparently no one clicked on the button? Try again.",
+  "noUpdateInTime": "I have not received an update in time, considering abandoned and auto un-assigning you from: {jiraKey}",
+  "autoAssignedTo": "You have been auto assigned to: {jiraKey}",
+  "unknownError": "Encountered an error, please try again. This error has been automatically logged.",
+  "notAssignedAnymore": "You're currently not assigned to this project anymore, so cannot do this action.",
+  "requestNotActive": "Request is not active anymore.",
+  "updateReceivedFromUser": "Update received, not staling project.",
+  "projectAbandoned": "Abandoned project {jiraKey}."
 }
