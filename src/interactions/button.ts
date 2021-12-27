@@ -5,11 +5,18 @@ import { jiraClient, logger } from '../index';
 import IdLink from '../models/IdLink';
 import UserInfo from '../models/UserInfo';
 import checkValid from '../lib/checkValid';
+import { allServicesOnline, updateUserGroups } from '../lib/middleware';
 
 const config = require('../../config.json');
 const strings = require('../../strings.json');
 
 export default async function buttonInteractionHandler(interaction: Discord.ButtonInteraction) {
+	const isEverythingOnline = await allServicesOnline();
+	if (!isEverythingOnline) {
+		await interaction.reply({ content: strings.serviceOffline, ephemeral: true });
+		return;
+	}
+
 	// TODO: Add interaction handlers for artist
 	if (interaction.customId.startsWith('assignToMe:')) {
 		if (!interaction.guild) return;
@@ -24,26 +31,17 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				password: config.oauthServer.clientSecret,
 			},
 		}).catch((err) => {
-			logger.info(err.response.data);
-			throw new Error(err);
-		}) as AxiosResponse<any>;
-
-		// Get user doc and update with the new assigned issue.
-		let userInfo = await UserInfo.findById(interaction.user.id).exec();
-		if (!userInfo) {
-			userInfo = new UserInfo({
-				_id: interaction.user.id,
-			});
+			logger.error(err.response.data);
+		}) as AxiosResponse;
+		if (!user) {
+			await interaction.editReply(strings.unknownError);
+			return;
 		}
-		userInfo.lastAssigned = new Date();
-		userInfo.isAssigned = true;
-		userInfo.assignedTo = issueKey;
 
 		// Update the project info in the db
 		const link = await IdLink.findOne({ discordMessageId: interaction.message.id }).lean().exec()
 			.catch((err: Error) => {
-				interaction.editReply(strings.assignmentFail);
-				throw err;
+				logger.error(err);
 			});
 		if (!link) {
 			await interaction.editReply(strings.assignmentFail);
@@ -52,16 +50,31 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 
 		const member = await interaction.guild.members.fetch(interaction.user.id)
 			.catch((err) => {
-				interaction.editReply(strings.assignmentFail);
-				throw err;
+				logger.error(err);
 			});
 		if (!member) {
 			await interaction.editReply(strings.interactionMemberNotFound);
 			return;
 		}
 
-		// TODO: Error handling
-		const issue = await jiraClient.issues.getIssue({ issueIdOrKey: issueKey });
+		const updatedGroups = await new Promise((resolve) => {
+			updateUserGroups(interaction.user.id)
+				.catch(() => resolve(false))
+				.then(() => resolve(true));
+		}) as boolean;
+		if (!updatedGroups) {
+			await interaction.editReply(strings.unknownError);
+			return;
+		}
+
+		const issue = await jiraClient.issues.getIssue({ issueIdOrKey: issueKey })
+			.catch((err) => {
+				logger.error(err);
+			});
+		if (!issue) {
+			await interaction.editReply(strings.assignmentFail);
+			return;
+		}
 
 		type JiraField = {
 			value: string;
@@ -82,7 +95,6 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			await interaction.editReply(strings.assignmentNotPossible);
 		} else {
 			// Use Jira to assign, so the webhook gets triggered and handles the rest.
-			// TODO: Error handling
 			await jiraClient.issues.doTransition({
 				issueIdOrKey: issueKey,
 				fields: {
@@ -93,9 +105,12 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				transition: {
 					id: config.jira.transitions.Assign,
 				},
+			}).then(() => {
+				interaction.editReply(strings.assignmentSuccess);
+			}).catch((err) => {
+				logger.error(err);
+				interaction.editReply(strings.assignmentFail);
 			});
-			await userInfo.save();
-			await interaction.editReply(strings.assignmentSuccess);
 		}
 	} else if (interaction.customId.startsWith('assignLQCToMe:')) {
 		if (!interaction.guild) return;
@@ -110,8 +125,11 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			},
 		}).catch((err) => {
 			logger.error(err.response.data);
-			throw new Error(err);
 		}) as AxiosResponse;
+		if (!user) {
+			await interaction.editReply(strings.unknownError);
+			return;
+		}
 
 		const link = await IdLink.findOne({ discordMessageId: interaction.message.id }).lean().exec()
 			.catch((err: Error) => {
@@ -126,15 +144,31 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		const member = await interaction.guild.members.fetch(interaction.user.id)
 			.catch((err) => {
 				interaction.editReply(strings.assignmentFail);
-				throw err;
+				logger.error(err);
 			});
 		if (!member) {
 			await interaction.editReply(strings.interactionMemberNotFound);
 			return;
 		}
 
-		// TODO: Error handling
-		const issue = await jiraClient.issues.getIssue({ issueIdOrKey: issueKey });
+		const updatedGroups = await new Promise((resolve) => {
+			updateUserGroups(interaction.user.id)
+				.catch(() => resolve(false))
+				.then(() => resolve(true));
+		}) as boolean;
+		if (!updatedGroups) {
+			await interaction.editReply(strings.unknownError);
+			return;
+		}
+
+		const issue = await jiraClient.issues.getIssue({ issueIdOrKey: issueKey })
+			.catch((err) => {
+				logger.error(err);
+			});
+		if (!issue) {
+			await interaction.editReply(strings.assignmentFail);
+			return;
+		}
 
 		type JiraField = {
 			value: string;
@@ -150,7 +184,6 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			});
 
 		if (valid) {
-			// TODO: Error handling
 			await jiraClient.issues.doTransition({
 				issueIdOrKey: issueKey,
 				fields: {
@@ -161,8 +194,12 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				transition: {
 					id: config.jira.transitions['Assign LQC'],
 				},
+			}).then(async () => {
+				await interaction.editReply(strings.assignmentSuccess);
+			}).catch((err) => {
+				logger.error(err);
+				interaction.editReply(strings.assignmentFail);
 			});
-			await interaction.editReply(strings.assignmentSuccess);
 		} else {
 			await interaction.editReply(strings.assignmentNotPossible);
 		}
@@ -179,13 +216,15 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			},
 		}).catch((err) => {
 			logger.error(err.response.data);
-			throw new Error(err);
 		}) as AxiosResponse;
+		if (!user) {
+			await interaction.editReply(strings.unknownError);
+			return;
+		}
 
 		const link = await IdLink.findOne({ discordMessageId: interaction.message.id }).lean().exec()
 			.catch((err: Error) => {
-				interaction.editReply(strings.assignmentFail);
-				throw err;
+				logger.error(err);
 			});
 		if (!link) {
 			await interaction.editReply(strings.assignmentFail);
@@ -195,10 +234,20 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		const member = await interaction.guild.members.fetch(interaction.user.id)
 			.catch((err) => {
 				interaction.editReply(strings.assignmentFail);
-				throw err;
+				logger.error(err);
 			});
 		if (!member) {
 			await interaction.editReply(strings.interactionMemberNotFound);
+			return;
+		}
+
+		const updatedGroups = await new Promise((resolve) => {
+			updateUserGroups(interaction.user.id)
+				.catch(() => resolve(false))
+				.then(() => resolve(true));
+		}) as boolean;
+		if (!updatedGroups) {
+			await interaction.editReply(strings.unknownError);
 			return;
 		}
 
@@ -209,7 +258,6 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			});
 
 		if (valid) {
-			// TODO: Error handling
 			await jiraClient.issues.doTransition({
 				issueIdOrKey: issueKey,
 				fields: {
@@ -220,12 +268,15 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				transition: {
 					id: config.jira.transitions['Assign SubQC'],
 				},
+			}).then(() => {
+				interaction.editReply(strings.assignmentSuccess);
+			}).catch((err) => {
+				logger.error(err);
+				interaction.editReply(strings.assignmentFail);
 			});
-			await interaction.editReply(strings.assignmentSuccess);
 		} else {
 			await interaction.editReply(strings.assignmentNotPossible);
 		}
-		// TODO: Interaction handlers for stale and abandon
 	} else if (interaction.customId.startsWith('dontStale:')) {
 		await interaction.deferReply();
 
@@ -299,7 +350,6 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			});
 		}
 	} else if (interaction.customId.startsWith('abandonProject:')) {
-		// TODO: Error handling
 		await interaction.deferReply();
 
 		const jiraKey = interaction.customId.split(':')[1];
@@ -349,12 +399,17 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 					transition: {
 						id: config.jira.transitions['Assign SubQC'],
 					},
+				}).then(() => {
+					project.staleCount += 1;
+					project.save((err) => {
+						if (err) {
+							logger.error(err);
+							interaction.editReply(strings.unknownError);
+							return;
+						}
+						interaction.editReply(format(strings.projectAbandoned, { jiraKey }));
+					});
 				});
-
-				project.staleCount += 1;
-				await project.save();
-
-				await interaction.editReply(format(strings.projectAbandoned, { jiraKey }));
 			}
 		} else {
 			await jiraClient.issues.doTransition({

@@ -3,12 +3,20 @@ import Discord, { MessageEmbed } from 'discord.js';
 import { components as JiraComponents } from '../types/jira';
 import { jiraClient, logger } from '../index';
 import Setting from '../models/Setting';
+import { allServicesOnline } from '../lib/middleware';
 
 // Config
 const config = require('../../config.json');
+const strings = require('../../strings.json');
 
 // eslint-disable-next-line consistent-return
 export default async function commandInteractionHandler(interaction: Discord.CommandInteraction) {
+	const isEverythingOnline = await allServicesOnline();
+	if (!isEverythingOnline) {
+		await interaction.reply({ content: strings.serviceOffline, ephemeral: true });
+		return;
+	}
+
 	// TODO: Add userinfo command
 	if (interaction.commandName === 'project') {
 		await interaction.deferReply();

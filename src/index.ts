@@ -9,12 +9,20 @@ import { Version2Client } from 'jira.js';
 import helmet from 'helmet';
 import winston from 'winston';
 import LokiTransport from 'winston-loki';
+import * as Sentry from '@sentry/node';
 
 // Config
 // eslint-disable-next-line import/order
 const config = require('../config.json');
 
 // Pre-init
+// Sentry
+if (config.senryDsn) {
+	Sentry.init({
+		dsn: config.sentryDsn,
+	});
+}
+
 // Mongoose
 export const conn1 = mongoose.createConnection(`mongodb+srv://${config.mongodb.username}:${config.mongodb.password}@${config.mongodb.host}/${config.mongodb.database}`);
 

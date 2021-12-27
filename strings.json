@@ -12,5 +12,6 @@
   "notAssignedAnymore": "You're currently not assigned to this project anymore, so cannot do this action.",
   "requestNotActive": "Request is not active anymore.",
   "updateReceivedFromUser": "Update received, not staling project.",
-  "projectAbandoned": "Abandoned project {jiraKey}."
+  "projectAbandoned": "Abandoned project {jiraKey}.",
+  "serviceOffline": "One of the required services is offline. Please try again later."
 }

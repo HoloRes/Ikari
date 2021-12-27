@@ -18,7 +18,7 @@ import GroupLink from './models/GroupLink';
 import checkValid from './lib/checkValid';
 import Setting from './models/Setting';
 import sendUserAssignedEmbed from './lib/sendUserAssignedEmbed';
-import { allServicesOnline } from './interactions/middleware';
+import { allServicesOnline } from './lib/middleware';
 
 // Local files
 const config = require('../config.json');
