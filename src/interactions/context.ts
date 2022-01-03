@@ -3,6 +3,7 @@ import { allServicesOnline } from '../lib/middleware';
 import UserInfo from '../models/UserInfo';
 
 const strings = require('../../strings.json');
+const config = require('../../config.json');
 
 // eslint-disable-next-line max-len
 export default async function userContextMenuInteractionHandler(interaction: UserContextMenuInteraction) {
@@ -24,7 +25,7 @@ export default async function userContextMenuInteractionHandler(interaction: Use
 			.addField(
 				'Currently assigned to',
 				userDoc.assignedTo
-					? `[${userDoc.assignedTo}](https://jira.hlresort.community/browse/${userDoc.assignedTo})${userDoc.assignedAs ? ` as ${userDoc.assignedAs === 'lqc' ? 'Language QC' : 'Sub QC'}` : ''}`
+					? `[${userDoc.assignedTo}](${config.jira.url}/browse/${userDoc.assignedTo})${userDoc.assignedAs ? ` as ${userDoc.assignedAs === 'lqc' ? 'Language QC' : 'Sub QC'}` : ''}`
 					: 'Nothing',
 			)
 			.addField('Last assigned', userDoc.lastAssigned ? `<t:${Math.floor(new Date(userDoc.lastAssigned).getTime() / 1000)}:D>` : 'never');

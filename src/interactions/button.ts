@@ -18,6 +18,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 	}
 
 	// TODO: Add interaction handlers for artist
+	// TODO: Add Jira comments
 	if (interaction.customId.startsWith('assignToMe:')) {
 		if (!interaction.guild) return;
 		await interaction.deferReply({ ephemeral: true });

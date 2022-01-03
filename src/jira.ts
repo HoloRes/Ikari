@@ -1160,7 +1160,6 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 					body: `Auto assigned SubQC to [~${user.username}].`,
 				});
 			}).catch((err) => {
-				console.log(err);
 				logger.error(err);
 			});
 		} else if (role === 'lqc') {
@@ -1181,7 +1180,6 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 					body: `Auto assigned LQC to [~${user.username}].`,
 				});
 			}).catch((err) => {
-				console.log(err);
 				logger.error(err);
 			});
 		}
@@ -1203,7 +1201,6 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 				body: `Auto assigned project to [~${user.username}].`,
 			});
 		}).catch((err) => {
-			console.log(err);
 			logger.error(err);
 		});
 	}
@@ -1232,7 +1229,7 @@ async function projectStaleCheckRequest(project: Document<any, any, Project> & P
 					const embed = new MessageEmbed()
 						.setTitle(`Requesting update for: **${project.jiraKey}**`)
 						.setDescription(`Last update on this project was <t:${Math.floor(new Date(project.lqcLastUpdate!).getTime() / 1000)}:D>`)
-						.setURL(`https://jira.hlresort.community/browse/${project.jiraKey}`);
+						.setURL(`${config.jira.url}/browse/${project.jiraKey}`);
 
 					const componentRow = new MessageActionRow()
 						.addComponents(
@@ -1274,7 +1271,7 @@ async function projectStaleCheckRequest(project: Document<any, any, Project> & P
 					const embed = new MessageEmbed()
 						.setTitle(`Requesting update for: **${project.jiraKey}**`)
 						.setDescription(`Last update on this project was <t:${Math.floor(new Date(project.sqcLastUpdate!).getTime() / 1000)}:D>`)
-						.setURL(`https://jira.hlresort.community/browse/${project.jiraKey}`);
+						.setURL(`${config.jira.url}/browse/${project.jiraKey}`);
 
 					const componentRow = new MessageActionRow()
 						.addComponents(
@@ -1312,7 +1309,7 @@ async function projectStaleCheckRequest(project: Document<any, any, Project> & P
 				const embed = new MessageEmbed()
 					.setTitle(`Requesting update for: **${project.jiraKey}**`)
 					.setDescription(`Last update on this project was <t:${Math.floor(new Date(project.lastUpdate).getTime() / 1000)}:D>`)
-					.setURL(`https://jira.hlresort.community/browse/${project.jiraKey}`);
+					.setURL(`${config.jira.url}/browse/${project.jiraKey}`);
 
 				const componentRow = new MessageActionRow()
 					.addComponents(
@@ -1506,7 +1503,9 @@ async function projectUpdateRequestCheck(project: Document<any, any, Project> & 
 }
 
 async function staleAnnounce(project: Document<any, any, Project> & Project) {
-	const teamLeadNotifySetting = await Setting.findById('teamLeadNotifyChannel').exec();
+	const teamLeadNotifySetting = await Setting.findById('teamLeadNotifyChannel').lean().exec();
+	const maxTimeTaken = await Setting.findById('maxTimeTaken').lean().exec();
+	if (maxTimeTaken) return;
 
 	if (teamLeadNotifySetting) {
 		const channel = await client.channels.fetch(teamLeadNotifySetting.value)

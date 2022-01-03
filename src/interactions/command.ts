@@ -32,7 +32,7 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 			.addField(
 				'Currently assigned to',
 				userDoc.assignedTo
-					? `[${userDoc.assignedTo}](https://jira.hlresort.community/browse/${userDoc.assignedTo})${userDoc.assignedAs ? ` as ${userDoc.assignedAs === 'lqc' ? 'Language QC' : 'Sub QC'}` : ''}`
+					? `[${userDoc.assignedTo}](${config.jira.url}/browse/${userDoc.assignedTo})${userDoc.assignedAs ? ` as ${userDoc.assignedAs === 'lqc' ? 'Language QC' : 'Sub QC'}` : ''}`
 					: 'Nothing',
 			)
 			.addField('Last assigned', userDoc.lastAssigned ? `<t:${Math.floor(new Date(userDoc.lastAssigned).getTime() / 1000)}:D>` : 'never');

@@ -2,6 +2,8 @@ import Discord, { MessageActionRow, MessageButton } from 'discord.js';
 import { Project } from '../models/IdLink';
 import { jiraClient } from '../index';
 
+const config = require('../../config.json');
+
 export default async function sendUserAssignedEmbed(project: Project, user: Discord.User) {
 	const issue = await jiraClient.issues.getIssue({
 		issueIdOrKey: project.jiraKey!,
@@ -21,7 +23,7 @@ export default async function sendUserAssignedEmbed(project: Project, user: Disc
 		.setColor('#0052cc')
 		.addField('Description', issue.fields.description ?? 'No description available')
 		.setFooter({ text: project.jiraKey! })
-		.setURL(`https://jira.hlresort.community/browse/${project.jiraKey}`);
+		.setURL(`${config.jira.url}/browse/${project.jiraKey}`);
 
 	await user.send({ embeds: [embed], components: [componentRow] });
 }
