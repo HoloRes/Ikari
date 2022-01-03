@@ -10,6 +10,7 @@ import helmet from 'helmet';
 import winston from 'winston';
 import LokiTransport from 'winston-loki';
 import * as Sentry from '@sentry/node';
+import SlackTransport from 'winston-slack-webhook-transport';
 
 // Config
 // eslint-disable-next-line import/order
@@ -40,11 +41,12 @@ export const jiraClient = new Version2Client({
 });
 
 // Init
-/* eslint-disable */
+/* eslint-disable import/first */
 import * as jira from './jira';
-import commandInteractionHandler from "./interactions/command";
-import updateRoles from "./lib/updateRoles";
-import buttonInteractionHandler from "./interactions/button";
+import commandInteractionHandler from './interactions/command';
+import updateRoles from './lib/updateRoles';
+import buttonInteractionHandler from './interactions/button';
+import userContextMenuInteractionHandler from './interactions/context';
 /* eslint-enable */
 
 // Logger
@@ -72,6 +74,12 @@ if (config.logTransports?.loki) {
 		labels: { service: 'ikari' },
 	}));
 	logger.debug('Added Loki transport');
+}
+if (config.logTransports?.discord) {
+	logger.add(new SlackTransport({
+		webhookUrl: config.logTransports.discord.url,
+		level: config.logTransports.discord.level ?? 'info',
+	}));
 }
 
 // Discord
@@ -221,6 +229,7 @@ client.on('messageCreate', (message) => {
 client.on('interactionCreate', async (interaction) => {
 	if (interaction.isCommand()) await commandInteractionHandler(interaction);
 	if (interaction.isButton()) await buttonInteractionHandler(interaction);
+	if (interaction.isUserContextMenu()) await userContextMenuInteractionHandler(interaction);
 });
 
 client.on('guildMemberUpdate', async (_, member) => {

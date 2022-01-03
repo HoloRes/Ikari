@@ -33,7 +33,8 @@
         "loki": {
             "host": "",
             "level": "info"
-        }
+        },
+        "discord": "Slack compatible webhook url, for Discord, just add /slack after the url"
     },
     "jira": {
         "url": "",

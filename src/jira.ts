@@ -608,13 +608,13 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					user.save((err) => {
 						if (err) logger.error(err);
 					});
-
+					link.lqcLastUpdate = new Date();
 					if (link.updateRequest & (1 << 1)) {
 						link.updateRequest -= (1 << 1);
-						link.save((err) => {
-							if (err) logger.error(err);
-						});
 					}
+					link.save((err) => {
+						if (err) logger.error(err);
+					});
 				}
 			} else {
 				const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
@@ -734,10 +734,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 					if (link.updateRequest & (1 << 2)) {
 						link.updateRequest -= (1 << 2);
-						link.save((err) => {
-							if (err) logger.error(err);
-						});
 					}
+					link.sqcLastUpdate = new Date();
+					link.save((err) => {
+						if (err) logger.error(err);
+					});
 				}
 			} else {
 				const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
@@ -831,9 +832,6 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 			if (req.body.issue.fields!.status.name === link.status) {
 				if (link.status === 'Sub QC/Language QC') {
-					console.log(req.body);
-					console.log(req.body.issue.fields![config.jira.fields.LQCSubQCFinished]);
-
 					const newRow = new MessageActionRow()
 						.addComponents(
 							new MessageButton()
@@ -1107,7 +1105,7 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 
 	if (!guild) return;
 	if (available.length === 0) {
-		logger.info(`Somehow, there's no one available for: ${project.jiraKey}`);
+		logger.info(`Somehow, there's no one available for: ${project.jiraKey} ${role ? `(${role})` : ''}`);
 		return;
 	}
 	logger.debug(guild.name);
@@ -1155,6 +1153,15 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 				transition: {
 					id: config.jira.transitions['Assign SubQC'],
 				},
+			}).then(async () => {
+				await discordUser.send(format(strings.autoAssignedTo, { jiraKey: project.jiraKey }));
+				await jiraClient.issueComments.addComment({
+					issueIdOrKey: project.jiraKey!,
+					body: `Auto assigned SubQC to [~${user.username}].`,
+				});
+			}).catch((err) => {
+				console.log(err);
+				logger.error(err);
 			});
 		} else if (role === 'lqc') {
 			await jiraClient.issues.doTransition({
@@ -1167,10 +1174,17 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 				transition: {
 					id: config.jira.transitions['Assign LQC'],
 				},
+			}).then(async () => {
+				await discordUser.send(format(strings.autoAssignedTo, { jiraKey: project.jiraKey }));
+				await jiraClient.issueComments.addComment({
+					issueIdOrKey: project.jiraKey!,
+					body: `Auto assigned LQC to [~${user.username}].`,
+				});
+			}).catch((err) => {
+				console.log(err);
+				logger.error(err);
 			});
 		}
-		await discordUser.send(format(strings.autoAssignedTo, { jiraKey: project.jiraKey }));
-		// TODO: Add comment on Jira
 	} else {
 		await jiraClient.issues.doTransition({
 			issueIdOrKey: project.jiraKey!,
@@ -1182,9 +1196,16 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 			transition: {
 				id: config.jira.transitions.Assign,
 			},
+		}).then(async () => {
+			await discordUser.send(format(strings.autoAssignedTo, { jiraKey: project.jiraKey }));
+			await jiraClient.issueComments.addComment({
+				issueIdOrKey: project.jiraKey!,
+				body: `Auto assigned project to [~${user.username}].`,
+			});
+		}).catch((err) => {
+			console.log(err);
+			logger.error(err);
 		});
-		await discordUser.send(format(strings.autoAssignedTo, { jiraKey: project.jiraKey }));
-		// TODO: Add comment on Jira
 	}
 }
 
@@ -1231,9 +1252,6 @@ async function projectStaleCheckRequest(project: Document<any, any, Project> & P
 					await user.save((err) => {
 						if (err) logger.error(err);
 					});
-					await project.save((err) => {
-						if (err) logger.error(err);
-					});
 				}
 			}
 		}
@@ -1276,9 +1294,6 @@ async function projectStaleCheckRequest(project: Document<any, any, Project> & P
 					await user.save((err) => {
 						if (err) logger.error(err);
 					});
-					await project.save((err) => {
-						if (err) logger.error(err);
-					});
 				}
 			}
 		}
@@ -1317,12 +1332,12 @@ async function projectStaleCheckRequest(project: Document<any, any, Project> & P
 				await user.save((err) => {
 					if (err) logger.error(err);
 				});
-				await project.save((err) => {
-					if (err) logger.error(err);
-				});
 			}
 		}
 	}
+	await project.save((err) => {
+		if (err) logger.error(err);
+	});
 }
 
 async function projectUpdateRequestCheck(project: Document<any, any, Project> & Project) {
@@ -1387,7 +1402,7 @@ async function projectUpdateRequestCheck(project: Document<any, any, Project> & 
 			const user = await UserInfo.findOne({
 				isAssigned: true,
 				assignedTo: project.jiraKey,
-				assignedAs: 'lqc',
+				assignedAs: 'sqc',
 			}).exec();
 
 			if (user && (user.updateRequested! <= compareDate)) {
@@ -1515,7 +1530,7 @@ async function staleAnnounce(project: Document<any, any, Project> & Project) {
 	});
 }
 
-cron.schedule('0 * * * *', async () => {
+cron.schedule('*/5 * * * *', async () => {
 	const autoAssignAfter = await Setting.findById('autoAssignAfter').lean().exec();
 
 	const toAutoAssign = await IdLink.find({
@@ -1622,6 +1637,7 @@ cron.schedule('0 * * * *', async () => {
 		lastStatusChange: {
 			$lte: new Date(Date.now() - 3 * 7 * 24 * 3600 * 1000),
 		},
+		abandoned: false,
 	});
 
 	toNotifyStale.forEach((project) => {

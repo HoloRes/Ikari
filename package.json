@@ -25,8 +25,8 @@
     "archiver": "^5.3.0",
     "axios": "^0.24.0",
     "bufferutil": "^4.0.3",
-    "discord-api-types": "^0.25.2",
-    "discord.js": "^13.1.0",
+    "discord-api-types": "^0.26.1",
+    "discord.js": "^13.5.0",
     "express": "^4.17.1",
     "helmet": "^4.6.0",
     "humanize-duration": "^3.27.1",
@@ -39,7 +39,8 @@
     "utf-8-validate": "^5.0.5",
     "webdav": "^4.3.0",
     "winston": "^3.3.3",
-    "winston-loki": "^6.0.3"
+    "winston-loki": "^6.0.3",
+    "winston-slack-webhook-transport": "^2.1.0"
   },
   "devDependencies": {
     "@tsconfig/node16": "^1.0.2",

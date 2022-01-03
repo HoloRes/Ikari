@@ -17,7 +17,7 @@ spec:
         app: ikari
     spec:
       containers:
-        - image: ghcr.io/holores/ikari:sha-804f72f
+        - image: ghcr.io/holores/ikari:latest
           name: ikari
           volumeMounts:
             - mountPath: /app/config.json

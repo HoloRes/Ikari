@@ -4,6 +4,7 @@ import { components as JiraComponents } from '../types/jira';
 import { jiraClient, logger } from '../index';
 import Setting from '../models/Setting';
 import { allServicesOnline } from '../lib/middleware';
+import UserInfo from '../models/UserInfo';
 
 // Config
 const config = require('../../config.json');
@@ -17,8 +18,28 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 		return;
 	}
 
-	// TODO: Add userinfo command
-	if (interaction.commandName === 'project') {
+	if (interaction.commandName === 'userinfo') {
+		await interaction.deferReply();
+		const user = interaction.options.getUser('user', true);
+		const userDoc = await UserInfo.findById(user.id).exec();
+		if (!userDoc) {
+			await interaction.editReply(strings.userNotFound);
+			return;
+		}
+
+		const embed = new Discord.MessageEmbed()
+			.setTitle(user.tag)
+			.addField(
+				'Currently assigned to',
+				userDoc.assignedTo
+					? `[${userDoc.assignedTo}](https://jira.hlresort.community/browse/${userDoc.assignedTo})${userDoc.assignedAs ? ` as ${userDoc.assignedAs === 'lqc' ? 'Language QC' : 'Sub QC'}` : ''}`
+					: 'Nothing',
+			)
+			.addField('Last assigned', userDoc.lastAssigned ? `<t:${Math.floor(new Date(userDoc.lastAssigned).getTime() / 1000)}:D>` : 'never');
+		const avatar = user.avatarURL();
+		if (avatar) embed.setThumbnail(avatar);
+		await interaction.editReply({ embeds: [embed] });
+	} else if (interaction.commandName === 'project') {
 		await interaction.deferReply();
 
 		const key = interaction.options.getString('key', true);
