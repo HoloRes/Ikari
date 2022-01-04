@@ -15,6 +15,10 @@ export default async function sendUserAssignedEmbed(project: Project, user: Disc
 				.setStyle('DANGER')
 				.setCustomId(`abandonProject:${project.jiraKey}`)
 				.setLabel('Abandon project'),
+			new MessageButton()
+				.setStyle('SUCCESS')
+				.setCustomId(`markInProgress:${project.jiraKey}`)
+				.setLabel('Mark in progress'),
 		);
 
 	const embed = new Discord.MessageEmbed()

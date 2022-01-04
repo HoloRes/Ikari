@@ -9,7 +9,7 @@ interface GroupLink {
 }
 
 // Schema
-const GroupLinkSchema = new mongoose.Schema({
+const GroupLinkSchema = new mongoose.Schema<GroupLink>({
 	_id: { type: String, required: true },
 	jiraName: { type: String, required: true },
 	baseRole: { type: Boolean, default: false },

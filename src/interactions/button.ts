@@ -1,11 +1,14 @@
 import Discord from 'discord.js';
 import axios, { AxiosResponse } from 'axios';
 import format from 'string-template';
+import humanizeDuration from 'humanize-duration';
 import { jiraClient, logger } from '../index';
 import IdLink from '../models/IdLink';
 import UserInfo from '../models/UserInfo';
 import checkValid from '../lib/checkValid';
 import { allServicesOnline, updateUserGroups } from '../lib/middleware';
+import Setting from '../models/Setting';
+import GroupLink from '../models/GroupLink';
 
 const config = require('../../config.json');
 const strings = require('../../strings.json');
@@ -278,10 +281,11 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		} else {
 			await interaction.editReply(strings.assignmentNotPossible);
 		}
-	} else if (interaction.customId.startsWith('dontStale:')) {
+	} else if (interaction.customId.startsWith('markInProgress:')) {
 		await interaction.deferReply();
 
 		const jiraKey = interaction.customId.split(':')[1];
+		const maxTimeTaken = await Setting.findById('maxTimeTaken').lean().exec();
 
 		const user = await UserInfo.findById(interaction.user.id).exec()
 			.catch((err) => {
@@ -304,50 +308,77 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 
 		if (user.assignedAs) {
 			if (user.assignedAs === 'lqc') {
-				if (!(project.updateRequest & (1 << 1))) {
+				if (project.inProgress & (1 << 1)) {
 					await interaction.editReply(strings.requestNotActive);
 					return;
 				}
-				project.lqcLastUpdate = new Date();
-				project.updateRequest -= (1 << 1);
+				project.lqcProgressStart = new Date();
+				project.inProgress += (1 << 1);
 				project.save(async (err) => {
 					if (err) {
 						logger.error(err);
 						await interaction.editReply(strings.unknownError);
 						return;
 					}
-					await interaction.editReply(strings.updateReceivedFromUser);
+					await interaction.editReply(format(strings.updateReceivedFromUser, {
+						maxTime: humanizeDuration(
+							maxTimeTaken?.value ? parseInt(maxTimeTaken.value, 10) : (30 * 24 * 60 * 60 * 1000),
+							{
+								largest: 1,
+								units: ['m', 'd', 'h'],
+								round: true,
+							},
+						),
+					}));
 				});
 			} else if (user.assignedAs === 'sqc') {
-				if (!(project.updateRequest & (1 << 2))) {
+				if (project.inProgress & (1 << 2)) {
 					await interaction.editReply(strings.requestNotActive);
 					return;
 				}
-				project.sqcLastUpdate = new Date();
-				project.updateRequest -= (1 << 2);
+				project.sqcProgressStart = new Date();
+				project.inProgress += (1 << 2);
 				project.save(async (err) => {
 					if (err) {
 						logger.error(err);
 						await interaction.editReply(strings.unknownError);
 						return;
 					}
-					await interaction.editReply(strings.updateReceivedFromUser);
+					await interaction.editReply(format(strings.updateReceivedFromUser, {
+						maxTime: humanizeDuration(
+							maxTimeTaken?.value ? parseInt(maxTimeTaken.value, 10) : (30 * 24 * 60 * 60 * 1000),
+							{
+								largest: 1,
+								units: ['m', 'd', 'h'],
+								round: true,
+							},
+						),
+					}));
 				});
 			}
 		} else {
-			if (!(project.updateRequest & (1 << 0))) {
+			if (project.inProgress & (1 << 0)) {
 				await interaction.editReply(strings.requestNotActive);
 				return;
 			}
-			project.sqcLastUpdate = new Date();
-			project.updateRequest -= (1 << 0);
+			project.progressStart = new Date();
+			project.inProgress += (1 << 0);
 			project.save(async (err) => {
 				if (err) {
 					logger.error(err);
 					await interaction.editReply(strings.unknownError);
 					return;
 				}
-				await interaction.editReply(strings.updateReceivedFromUser);
+				await interaction.editReply(format(strings.updateReceivedFromUser, {
+					maxTime: humanizeDuration(
+						maxTimeTaken?.value ? parseInt(maxTimeTaken?.value, 10) : (30 * 24 * 60 * 60 * 1000),
+						{
+							largest: 1,
+							units: ['m', 'd', 'h'],
+							round: true,
+						},
+					),
+				}));
 			});
 		}
 	} else if (interaction.customId.startsWith('abandonProject:')) {
@@ -427,6 +458,95 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			await project.save();
 
 			await interaction.editReply(format(strings.projectAbandoned, { jiraKey }));
+		}
+	} else if (interaction.customId.startsWith('teamLead:')) {
+		if (!interaction.guild) return;
+
+		await interaction.deferReply();
+		const teamLeadRole = await GroupLink.findOne({ jiraName: 'Team Lead' }).lean().exec();
+		if (!teamLeadRole) {
+			await interaction.editReply('No team lead role found, please report this.');
+			return;
+		}
+		const member = await interaction.guild.members.fetch(interaction.user.id)
+			.catch((err) => {
+				logger.error(err);
+			});
+		if (!member) {
+			await interaction.editReply(strings.interactionMemberNotFound);
+			return;
+		}
+		if (!member.roles.cache.has(teamLeadRole._id)) {
+			await interaction.editReply('You don\'t have permission to execute this.');
+			return;
+		}
+
+		const command = interaction.customId.substring('teamLead:'.length);
+		if (command.startsWith('abandonProject:')) {
+			const issueKey = command.split(':')[1];
+
+			await jiraClient.issues.doTransition({
+				issueIdOrKey: issueKey,
+				transition: {
+					id: config.jira.transitions['Abandon Project'],
+				},
+			}).then(() => {
+				interaction.editReply('Abandoned project, this is irreversible!');
+			}).catch((err) => {
+				logger.error(err);
+				interaction.editReply(strings.unknownError);
+			});
+		} else if (command.startsWith('unassign:')) {
+			const issueKey = command.split(':')[1];
+
+			await jiraClient.issues.doTransition({
+				issueIdOrKey: issueKey,
+				fields: {
+					assignee: null,
+				},
+				transition: {
+					id: config.jira.transitions.Assign,
+				},
+			}).then(() => {
+				interaction.editReply('Unassigned project');
+			}).catch((err) => {
+				logger.error(err);
+				interaction.editReply(strings.unknownError);
+			});
+		} else if (command.startsWith('unassign-lqc:')) {
+			const issueKey = command.split(':')[1];
+
+			await jiraClient.issues.doTransition({
+				issueIdOrKey: issueKey,
+				fields: {
+					[config.jira.fields.LQCAssignee]: null,
+				},
+				transition: {
+					id: config.jira.transitions['Assign LQC'],
+				},
+			}).then(async () => {
+				await interaction.editReply(strings.assignmentSuccess);
+			}).catch((err) => {
+				logger.error(err);
+				interaction.editReply(strings.assignmentFail);
+			});
+		} else if (command.startsWith('unassign-sqc:')) {
+			const issueKey = command.split(':')[1];
+
+			await jiraClient.issues.doTransition({
+				issueIdOrKey: issueKey,
+				fields: {
+					[config.jira.fields.SubQCAssignee]: null,
+				},
+				transition: {
+					id: config.jira.transitions['Assign SubQC'],
+				},
+			}).then(async () => {
+				await interaction.editReply(strings.assignmentSuccess);
+			}).catch((err) => {
+				logger.error(err);
+				interaction.editReply(strings.assignmentFail);
+			});
 		}
 	}
 }

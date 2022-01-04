@@ -8,7 +8,7 @@ interface Setting {
 }
 
 // Schema
-const SettingSchema = new mongoose.Schema({
+const SettingSchema = new mongoose.Schema<Setting>({
 	_id: String, // Setting name
 	value: String,
 });

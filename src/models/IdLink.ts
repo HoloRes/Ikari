@@ -10,18 +10,19 @@ export interface Project {
 	languages: string[];
 	finished: boolean;
 	lastUpdate: Date;
-	lastStatusChange: Date;
-	lqcLastUpdate?: Date;
-	sqcLastUpdate?: Date;
+	progressStart?: Date;
+	lqcProgressStart?: Date;
+	sqcProgressStart?: Date;
 	staleCount: number;
 	abandoned: boolean;
+	requestedTeamLeadAction: boolean;
 	// Below is set using bit shifts (1 << k)
-	updateRequest: number;
 	hasAssignment: number;
+	inProgress: number;
 }
 
 // Schema
-const ProjectSchema = new mongoose.Schema({
+const ProjectSchema = new mongoose.Schema<Project>({
 	jiraKey: String,
 	discordMessageId: String,
 	type: { type: String, enum: ['translation', 'artist'], required: true },
@@ -29,13 +30,14 @@ const ProjectSchema = new mongoose.Schema({
 	languages: { type: [String], required: true },
 	finished: { type: Boolean, default: false },
 	lastUpdate: { type: Date, default: new Date() },
-	lastStatusChange: { type: Date },
-	lqcLastUpdate: { type: Date },
-	sqcLastUpdate: { type: Date },
+	progressStart: { type: Date },
+	lqcProgressStart: { type: Date },
+	sqcProgressStart: { type: Date },
 	staleCount: { type: Number, default: 0 },
 	abandoned: { type: Boolean, default: false },
-	updateRequest: { type: Number, default: 0 },
+	requestedTeamLeadAction: { type: Boolean, default: false },
 	hasAssignment: { type: Number, default: 0 },
+	inProgress: { type: Number, default: 0 },
 });
 
 export default conn1.model<Project>('Project', ProjectSchema, 'projects');

@@ -47,6 +47,7 @@ import commandInteractionHandler from './interactions/command';
 import updateRoles from './lib/updateRoles';
 import buttonInteractionHandler from './interactions/button';
 import userContextMenuInteractionHandler from './interactions/context';
+import './lib/timer';
 /* eslint-enable */
 
 // Logger

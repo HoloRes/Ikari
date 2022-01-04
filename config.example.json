@@ -54,7 +54,8 @@
             "Assign": "",
             "Assign SubQC": "",
             "Assign LQC": "",
-            "Send to translator": ""
+            "Send to translator": "",
+            "Abandon Project": ""
         }
     },
     "webhookSecret": "",

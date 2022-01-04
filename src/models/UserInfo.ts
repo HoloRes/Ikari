@@ -9,17 +9,19 @@ type UserInfo = {
 	assignedTo?: string;
 	assignedAs?: string;
 	updateRequested?: Date;
+	updateRequestCount: number;
 	roles: string[];
 };
 
 // Schema
-const UserInfoSchema = new mongoose.Schema({
+const UserInfoSchema = new mongoose.Schema<UserInfo>({
 	_id: { type: String, required: true },
 	lastAssigned: { type: Date, default: new Date(0) },
 	isAssigned: { type: Boolean, default: false },
 	assignedTo: { type: String },
 	assignedAs: { type: String },
 	updateRequested: { type: Date },
+	updateRequestCount: { type: Number, default: 0 },
 	roles: { type: [String], default: [] },
 });
 

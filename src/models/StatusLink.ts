@@ -8,7 +8,7 @@ interface StatusLink {
 }
 
 // Schema
-const StatusLinkSchema = new mongoose.Schema({
+const StatusLinkSchema = new mongoose.Schema<StatusLink>({
 	_id: { type: String, required: true },
 	channel: { type: String, required: true },
 });

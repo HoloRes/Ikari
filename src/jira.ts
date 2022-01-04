@@ -1,22 +1,14 @@
 // Imports
 import { Router, Request } from 'express';
 import {
-	BaseGuildTextChannel, MessageActionRow, MessageButton, MessageEmbed, TextChannel,
+	BaseGuildTextChannel, MessageActionRow, MessageButton, MessageEmbed,
 } from 'discord.js';
 import axios from 'axios';
-import cron from 'node-cron';
-import { Document } from 'mongoose';
-import format from 'string-template';
 import { logger, client, jiraClient } from './index';
-
-// Models
-import IdLink, { Project } from './models/IdLink';
+import IdLink from './models/IdLink';
 import { components } from './types/jira';
 import StatusLink from './models/StatusLink';
 import UserInfo from './models/UserInfo';
-import GroupLink from './models/GroupLink';
-import checkValid from './lib/checkValid';
-import Setting from './models/Setting';
 import sendUserAssignedEmbed from './lib/sendUserAssignedEmbed';
 import { allServicesOnline } from './lib/middleware';
 
@@ -82,10 +74,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			.setDescription(req.body.issue.fields!.summary ?? 'No description available')
 			.addField('Status', req.body.issue.fields!.status.name)
 			.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-			.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
+			.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
 			.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
 
-		// TODO: create button to pick up, somehow needs to run as the user that clicked it
 		const msg = await channel.send({ content: 'A new project is available and can be picked up in Jira', embeds: [embed] })
 			.catch((err) => {
 				throw new Error(err);
@@ -101,6 +92,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			.catch((err) => {
 				throw err;
 			});
+
+		// eslint-disable-next-line max-len
+		// TODO: For prod, create a link if it doesn't exist, expect Ikari to be offline/crashed in those cases.
 		if (!link || link.finished || link.abandoned) return;
 
 		const statusLink = await StatusLink.findById(link.status).lean().exec()
@@ -175,10 +169,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				.setDescription(req.body.issue.fields!.summary ?? 'No description available')
 				.addField('Status', req.body.issue.fields!.status.name)
 				.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-				.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
+				.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
 				.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
 
-			// TODO: create button to pick up, somehow needs to run as the user that clicked it
 			const msg = await channel.send({ content: 'A new project is available and can be picked up in Jira', embeds: [embed] })
 				.catch((err) => {
 					throw new Error(err);
@@ -278,9 +271,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				if (req.body.issue.fields!.status.name === 'Uploaded') {
 					link.discordMessageId = undefined;
 					link.status = req.body.issue.fields!.status.name;
-					link.lastStatusChange = new Date();
 					link.lastUpdate = new Date();
-					link.updateRequest = 0;
 					link.hasAssignment = 0;
 					link.finished = true;
 
@@ -300,9 +291,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					logger.warn(`No channel link found for: ${req.body.issue.fields!.status.name}`);
 					link.discordMessageId = undefined;
 					link.status = req.body.issue.fields!.status.name;
-					link.lastStatusChange = new Date();
 					link.lastUpdate = new Date();
-					link.updateRequest = 0;
 					link.hasAssignment = 0;
 
 					await link.save((err) => {
@@ -346,7 +335,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.addField('LQC Status', 'To do')
 						.addField('SubQC Status', 'To do')
 						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-						.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
+						.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
 						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
 
 					const newMsg = await newChannel.send({
@@ -356,11 +345,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 					link.discordMessageId = newMsg.id;
 					link.status = req.body.issue.fields!.status.name;
-					link.lastStatusChange = new Date();
 					link.lastUpdate = new Date();
-					link.lqcLastUpdate = new Date();
-					link.sqcLastUpdate = new Date();
-					link.updateRequest = 0;
+					link.lqcProgressStart = undefined;
+					link.sqcProgressStart = undefined;
 					link.hasAssignment = 0;
 
 					await link.save((err) => {
@@ -382,9 +369,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 					link.discordMessageId = newMsg.id;
 					link.status = req.body.issue.fields!.status.name;
-					link.lastStatusChange = new Date();
 					link.lastUpdate = new Date();
-					link.updateRequest = 0;
 					link.hasAssignment = 0;
 
 					await link.save((err) => {
@@ -416,7 +401,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.addField('Status', req.body.issue.fields!.status.name)
 						.addField('Assignee', user ? `<@${user._id}>` : 'Unassigned')
 						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-						.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
+						.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
 						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
 
 					const newMsg = await newChannel.send({
@@ -426,9 +411,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 					link.discordMessageId = newMsg.id;
 					link.status = req.body.issue.fields!.status.name;
-					link.lastStatusChange = new Date();
 					link.lastUpdate = new Date();
-					link.updateRequest = 0;
 
 					await link.save((err) => {
 						if (err) logger.error(err);
@@ -460,13 +443,20 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.setEmoji('819518919739965490')
 						.setDisabled(req.body.issue.fields!.assignee !== null),
 				);
+			link.progressStart = undefined;
 
 			if (req.body.issue.fields!.assignee === null) {
 				if (link.hasAssignment & (1 << 0)) {
 					link.hasAssignment -= (1 << 0);
+
+					if (link.inProgress & (1 << 0)) {
+						link.inProgress -= (1 << 0);
+					}
+
 					link.save((err) => {
 						if (err) logger.error(err);
 					});
+
 					const user = await UserInfo.findOne({ assignedTo: link.jiraKey }).exec()
 						.catch((err) => {
 							if (err) logger.log(err);
@@ -479,13 +469,6 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					user.save((err) => {
 						if (err) logger.error(err);
 					});
-
-					if (link.updateRequest & (1 << 0)) {
-						link.updateRequest -= (1 << 0);
-						link.save((err) => {
-							if (err) logger.error(err);
-						});
-					}
 				}
 
 				const embed = msg.embeds[0].spliceFields(1, 1, {
@@ -520,20 +503,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					});
 				}
 
-				if (link.updateRequest & (1 << 0)) {
-					link.updateRequest -= (1 << 0);
-					link.save((err) => {
-						if (err) logger.error(err);
-					});
+				if (link.inProgress & (1 << 0)) {
+					link.inProgress -= (1 << 0);
 				}
 				if (!(link.hasAssignment & (1 << 0))) {
 					link.hasAssignment += (1 << 0);
-					link.save((err) => {
-						if (err) {
-							logger.error(err);
-							throw err;
-						}
-					});
 				}
 
 				let userDoc = await UserInfo.findById(user._id).exec();
@@ -545,7 +519,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				userDoc.isAssigned = true;
 				userDoc.lastAssigned = new Date();
 				userDoc.assignedTo = req.body.issue.key;
+				userDoc.updateRequested = new Date();
+				userDoc.updateRequestCount = 0;
+
 				link.lastUpdate = new Date();
+
 				userDoc.save((err) => {
 					if (err) logger.error(err);
 				});
@@ -582,6 +560,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.setEmoji('819518919739965490')
 						.setDisabled(req.body.issue.fields![config.jira.fields.SubQCAssignee] !== null),
 				);
+			link.lqcProgressStart = undefined;
 
 			if (req.body.issue.fields![config.jira.fields.LQCAssignee] === null) {
 				const embed = msg.embeds[0].spliceFields(1, 1, {
@@ -593,9 +572,15 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 				if (link.hasAssignment & (1 << 1)) {
 					link.hasAssignment -= (1 << 1);
+
+					if (link.inProgress & (1 << 1)) {
+						link.inProgress -= (1 << 1);
+					}
+
 					link.save((err) => {
 						if (err) logger.error(err);
 					});
+
 					const user = await UserInfo.findOne({ assignedTo: link.jiraKey, assignedAs: 'lqc' }).exec()
 						.catch((err) => {
 							logger.log(err);
@@ -605,14 +590,8 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					user.assignedAs = undefined;
 					user.assignedTo = undefined;
 					user.lastAssigned = new Date();
+
 					user.save((err) => {
-						if (err) logger.error(err);
-					});
-					link.lqcLastUpdate = new Date();
-					if (link.updateRequest & (1 << 1)) {
-						link.updateRequest -= (1 << 1);
-					}
-					link.save((err) => {
 						if (err) logger.error(err);
 					});
 				}
@@ -643,20 +622,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					});
 				}
 
-				if (link.updateRequest & (1 << 1)) {
-					link.updateRequest -= (1 << 1);
-					link.save((err) => {
-						if (err) logger.error(err);
-					});
+				if (link.inProgress & (1 << 1)) {
+					link.inProgress -= (1 << 1);
 				}
 				if (!(link.hasAssignment & (1 << 1))) {
 					link.hasAssignment += (1 << 1);
-					link.save((err) => {
-						if (err) {
-							logger.error(err);
-							throw err;
-						}
-					});
 				}
 
 				let userDoc = await UserInfo.findById(user._id).exec();
@@ -669,10 +639,13 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				userDoc.lastAssigned = new Date();
 				userDoc.assignedTo = req.body.issue.key;
 				userDoc.assignedAs = 'lqc';
-				link.lqcLastUpdate = new Date();
+				userDoc.updateRequested = new Date();
+				userDoc.updateRequestCount = 0;
+
 				userDoc.save((err) => {
 					if (err) logger.error(err);
 				});
+
 				link.save((err) => {
 					if (err) logger.error(err);
 				});
@@ -706,6 +679,8 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.setDisabled(req.body.issue.fields![config.jira.fields.SubQCAssignee] !== null),
 				);
 
+			link.sqcProgressStart = undefined;
+
 			if (req.body.issue.fields![config.jira.fields.SubQCAssignee] === null) {
 				const embed = msg.embeds[0].spliceFields(2, 1, {
 					name: 'SubQC Assignee',
@@ -716,9 +691,14 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 				if (link.hasAssignment & (1 << 2)) {
 					link.hasAssignment -= (1 << 2);
+
+					if (link.inProgress & (1 << 2)) {
+						link.inProgress -= (1 << 2);
+					}
 					link.save((err) => {
 						if (err) logger.error(err);
 					});
+
 					const user = await UserInfo.findOne({ assignedTo: link.jiraKey, assignedAs: 'sqc' }).exec()
 						.catch((err) => {
 							logger.log(err);
@@ -728,15 +708,8 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					user.assignedAs = undefined;
 					user.assignedTo = undefined;
 					user.lastAssigned = new Date();
-					user.save((err) => {
-						if (err) logger.error(err);
-					});
 
-					if (link.updateRequest & (1 << 2)) {
-						link.updateRequest -= (1 << 2);
-					}
-					link.sqcLastUpdate = new Date();
-					link.save((err) => {
+					user.save((err) => {
 						if (err) logger.error(err);
 					});
 				}
@@ -767,20 +740,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					});
 				}
 
-				if (link.updateRequest & (1 << 2)) {
-					link.updateRequest -= (1 << 2);
-					link.save((err) => {
-						if (err) logger.error(err);
-					});
+				if (link.inProgress & (1 << 2)) {
+					link.inProgress -= (1 << 2);
 				}
 				if (!(link.hasAssignment & (1 << 2))) {
 					link.hasAssignment += (1 << 2);
-					link.save((err) => {
-						if (err) {
-							logger.error(err);
-							throw err;
-						}
-					});
 				}
 
 				let userDoc = await UserInfo.findById(user._id).exec();
@@ -793,7 +757,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				userDoc.lastAssigned = new Date();
 				userDoc.assignedTo = req.body.issue.key;
 				userDoc.assignedAs = 'sqc';
-				link.sqcLastUpdate = new Date();
+				userDoc.updateRequested = new Date();
+				userDoc.updateRequestCount = 0;
+
 				userDoc.save((err) => {
 					if (err) logger.error(err);
 				});
@@ -875,7 +841,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 							),
 						)
 						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-						.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
+						.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
 						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
 
 					msg.edit({
@@ -890,7 +856,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.addField('Status', req.body.issue.fields!.status.name)
 						.addField('Assignee', msg.embeds[0].fields[1].value)
 						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-						.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
+						.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
 						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
 
 					msg.edit({
@@ -923,9 +889,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					logger.warn(`No channel link found for: ${req.body.issue.fields!.status.name}`);
 					link.discordMessageId = undefined;
 					link.status = req.body.issue.fields!.status.name;
-					link.lastStatusChange = new Date();
 					link.lastUpdate = new Date();
-					link.updateRequest = 0;
 					link.hasAssignment = 0;
 
 					await link.save((err) => {
@@ -969,7 +933,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.addField('LQC Status', 'To do')
 						.addField('SubQC Status', 'To do')
 						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-						.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
+						.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
 						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
 
 					const newMsg = await newChannel.send({
@@ -979,12 +943,12 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 					link.discordMessageId = newMsg.id;
 					link.status = req.body.issue.fields!.status.name;
-					link.lastStatusChange = new Date();
 					link.lastUpdate = new Date();
-					link.lqcLastUpdate = new Date();
-					link.sqcLastUpdate = new Date();
-					link.updateRequest = 0;
+					link.progressStart = undefined;
+					link.lqcProgressStart = undefined;
+					link.sqcProgressStart = undefined;
 					link.hasAssignment = 0;
+					link.inProgress = 0;
 
 					await link.save((err) => {
 						if (err) logger.error(err);
@@ -1007,9 +971,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 					link.discordMessageId = newMsg.id;
 					link.status = req.body.issue.fields!.status.name;
-					link.lastStatusChange = new Date();
 					link.lastUpdate = new Date();
-					link.updateRequest = 0;
 					link.hasAssignment = 0;
 
 					await link.save((err) => {
@@ -1043,7 +1005,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.addField('Status', req.body.issue.fields!.status.name)
 						.addField('Assignee', user ? `<@${user._id}>` : 'Unassigned')
 						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-						.setFooter(`Due date: ${req.body.issue.fields!.duedate || 'unknown'}`)
+						.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
 						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
 
 					const newMsg = await newChannel.send({
@@ -1053,9 +1015,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 					link.discordMessageId = newMsg.id;
 					link.status = req.body.issue.fields!.status.name;
-					link.lastStatusChange = new Date();
 					link.lastUpdate = new Date();
-					link.updateRequest = 0;
 
 					await link.save((err) => {
 						if (err) logger.error(err);
@@ -1085,561 +1045,4 @@ router.get('/webhook/test', async (req, res) => {
 	}
 	const online = await allServicesOnline();
 	res.status(200).send(online);
-});
-
-async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void> {
-	const hiatusRole = await GroupLink.findOne({ jiraName: 'Hiatus' }).exec();
-
-	const available = await UserInfo.find({
-		roles: {
-			// Set to something impossible when the hiatus role cannot be found
-			$ne: hiatusRole?._id ?? '0000',
-		},
-		isAssigned: false,
-	}).sort({ lastAssigned: 'desc' }).exec();
-
-	const guild = await client.guilds.fetch(config.discord.guild)
-		.catch((err) => {
-			logger.error(err);
-		});
-
-	if (!guild) return;
-	if (available.length === 0) {
-		logger.info(`Somehow, there's no one available for: ${project.jiraKey} ${role ? `(${role})` : ''}`);
-		return;
-	}
-	logger.debug(guild.name);
-
-	const filteredAvailable = available.filter(async (user) => {
-		const member = await guild.members.fetch(user._id)
-			.catch((err) => {
-				logger.error(err);
-			});
-		if (!member) return false;
-		return checkValid(member, project.status, project.languages, role);
-	});
-	if (filteredAvailable.length === 0) {
-		logger.info(`Somehow, there's no one available for: ${project.jiraKey}`);
-		return;
-	}
-
-	const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
-		params: { id: filteredAvailable[0]._id },
-		auth: {
-			username: config.oauthServer.clientId,
-			password: config.oauthServer.clientSecret,
-		},
-	}).catch((err) => {
-		logger.log(err.response.data);
-		throw new Error(err);
-	});
-
-	const discordUser = await client.users.fetch(filteredAvailable[0]._id)
-		.catch((err) => {
-			logger.error(err);
-		});
-	if (!discordUser) return;
-
-	// Role is only set in SQC/LQC status
-	if (role) {
-		if (role === 'sqc') {
-			await jiraClient.issues.doTransition({
-				issueIdOrKey: project.jiraKey!,
-				fields: {
-					[config.jira.fields.SubQCAssignee]: {
-						name: user.username,
-					},
-				},
-				transition: {
-					id: config.jira.transitions['Assign SubQC'],
-				},
-			}).then(async () => {
-				await discordUser.send(format(strings.autoAssignedTo, { jiraKey: project.jiraKey }));
-				await jiraClient.issueComments.addComment({
-					issueIdOrKey: project.jiraKey!,
-					body: `Auto assigned SubQC to [~${user.username}].`,
-				});
-			}).catch((err) => {
-				logger.error(err);
-			});
-		} else if (role === 'lqc') {
-			await jiraClient.issues.doTransition({
-				issueIdOrKey: project.jiraKey!,
-				fields: {
-					[config.jira.fields.LQCAssignee]: {
-						name: user.username,
-					},
-				},
-				transition: {
-					id: config.jira.transitions['Assign LQC'],
-				},
-			}).then(async () => {
-				await discordUser.send(format(strings.autoAssignedTo, { jiraKey: project.jiraKey }));
-				await jiraClient.issueComments.addComment({
-					issueIdOrKey: project.jiraKey!,
-					body: `Auto assigned LQC to [~${user.username}].`,
-				});
-			}).catch((err) => {
-				logger.error(err);
-			});
-		}
-	} else {
-		await jiraClient.issues.doTransition({
-			issueIdOrKey: project.jiraKey!,
-			fields: {
-				assignee: {
-					name: user.username,
-				},
-			},
-			transition: {
-				id: config.jira.transitions.Assign,
-			},
-		}).then(async () => {
-			await discordUser.send(format(strings.autoAssignedTo, { jiraKey: project.jiraKey }));
-			await jiraClient.issueComments.addComment({
-				issueIdOrKey: project.jiraKey!,
-				body: `Auto assigned project to [~${user.username}].`,
-			});
-		}).catch((err) => {
-			logger.error(err);
-		});
-	}
-}
-
-async function projectStaleCheckRequest(project: Document<any, any, Project> & Project) {
-	if (project.status === 'Sub QC/Language QC') {
-		const compareDate = new Date(Date.now() - 4 * 24 * 3600 * 1000);
-
-		if (project.lqcLastUpdate! < compareDate && !(project.updateRequest & (1 << 1))) {
-			// eslint-disable-next-line no-param-reassign
-			project.updateRequest += (1 << 1);
-
-			const user = await UserInfo.findOne({
-				isAssigned: true,
-				assignedTo: project.jiraKey,
-				assignedAs: 'lqc',
-			}).exec();
-
-			if (user) {
-				const discordUser = await client.users.fetch(user._id)
-					.catch((err) => {
-						logger.error(err);
-					});
-				if (discordUser) {
-					const embed = new MessageEmbed()
-						.setTitle(`Requesting update for: **${project.jiraKey}**`)
-						.setDescription(`Last update on this project was <t:${Math.floor(new Date(project.lqcLastUpdate!).getTime() / 1000)}:D>`)
-						.setURL(`${config.jira.url}/browse/${project.jiraKey}`);
-
-					const componentRow = new MessageActionRow()
-						.addComponents(
-							new MessageButton()
-								.setStyle('SUCCESS')
-								.setCustomId(`dontStale:${project.jiraKey}`)
-								.setLabel('Do not stale project'),
-						)
-						.addComponents(
-							new MessageButton()
-								.setStyle('DANGER')
-								.setCustomId(`abandonProject:${project.jiraKey}`)
-								.setLabel('Abandon project'),
-						);
-					await discordUser.send({ embeds: [embed], components: [componentRow] });
-					user.updateRequested = new Date();
-					await user.save((err) => {
-						if (err) logger.error(err);
-					});
-				}
-			}
-		}
-		if (project.sqcLastUpdate! < compareDate && !(project.updateRequest & (1 << 2))) {
-			// eslint-disable-next-line no-param-reassign
-			project.updateRequest += (1 << 2);
-
-			const user = await UserInfo.findOne({
-				isAssigned: true,
-				assignedTo: project.jiraKey,
-				assignedAs: 'sqc',
-			}).exec();
-
-			if (user) {
-				const discordUser = await client.users.fetch(user._id)
-					.catch((err) => {
-						logger.error(err);
-					});
-				if (discordUser) {
-					const embed = new MessageEmbed()
-						.setTitle(`Requesting update for: **${project.jiraKey}**`)
-						.setDescription(`Last update on this project was <t:${Math.floor(new Date(project.sqcLastUpdate!).getTime() / 1000)}:D>`)
-						.setURL(`${config.jira.url}/browse/${project.jiraKey}`);
-
-					const componentRow = new MessageActionRow()
-						.addComponents(
-							new MessageButton()
-								.setStyle('SUCCESS')
-								.setCustomId(`dontStale:${project.jiraKey}`)
-								.setLabel('Do not stale project'),
-						)
-						.addComponents(
-							new MessageButton()
-								.setStyle('DANGER')
-								.setCustomId(`abandonProject:${project.jiraKey}`)
-								.setLabel('Abandon project'),
-						);
-					await discordUser.send({ embeds: [embed], components: [componentRow] });
-					user.updateRequested = new Date();
-					await user.save((err) => {
-						if (err) logger.error(err);
-					});
-				}
-			}
-		}
-	} else {
-		const user = await UserInfo.findOne({
-			isAssigned: true,
-			assignedTo: project.jiraKey,
-		}).exec();
-
-		if (user) {
-			const discordUser = await client.users.fetch(user._id)
-				.catch((err) => {
-					logger.error(err);
-				});
-			if (discordUser) {
-				const embed = new MessageEmbed()
-					.setTitle(`Requesting update for: **${project.jiraKey}**`)
-					.setDescription(`Last update on this project was <t:${Math.floor(new Date(project.lastUpdate).getTime() / 1000)}:D>`)
-					.setURL(`${config.jira.url}/browse/${project.jiraKey}`);
-
-				const componentRow = new MessageActionRow()
-					.addComponents(
-						new MessageButton()
-							.setStyle('SUCCESS')
-							.setCustomId(`dontStale:${project.jiraKey}`)
-							.setLabel('Do not stale project'),
-					)
-					.addComponents(
-						new MessageButton()
-							.setStyle('DANGER')
-							.setCustomId(`abandonProject:${project.jiraKey}`)
-							.setLabel('Abandon project'),
-					);
-				await discordUser.send({ embeds: [embed], components: [componentRow] });
-				user.updateRequested = new Date();
-				await user.save((err) => {
-					if (err) logger.error(err);
-				});
-			}
-		}
-	}
-	await project.save((err) => {
-		if (err) logger.error(err);
-	});
-}
-
-async function projectUpdateRequestCheck(project: Document<any, any, Project> & Project) {
-	const compareDate = new Date(Date.now() - 3 * 24 * 3600 * 1000);
-
-	if (project.status === 'Sub QC/Language QC') {
-		if (project.updateRequest & (1 << 1)) {
-			const user = await UserInfo.findOne({
-				isAssigned: true,
-				assignedTo: project.jiraKey,
-				assignedAs: 'lqc',
-			}).exec();
-
-			if (user && (user.updateRequested! <= compareDate)) {
-				const discordUser = await client.users.fetch(user._id)
-					.catch((err) => {
-						logger.error(err);
-					});
-
-				if (discordUser) {
-					await jiraClient.issues.doTransition({
-						issueIdOrKey: project.jiraKey!,
-						fields: {
-							[config.jira.fields.LQCAssignee]: null,
-						},
-						transition: {
-							id: config.jira.transitions['Assign LQC'],
-						},
-					});
-
-					const { data: jiraUser } = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
-						params: { id: discordUser.id },
-						auth: {
-							username: config.oauthServer.clientId,
-							password: config.oauthServer.clientSecret,
-						},
-					}).catch((err) => {
-						logger.info(err.response.data);
-						throw new Error(err);
-					});
-
-					/* eslint-disable no-param-reassign */
-					project.staleCount += 1;
-					/* eslint-enable */
-					project.save(async (err) => {
-						if (err) {
-							logger.error(err);
-							return;
-						}
-
-						await discordUser.send(format(strings.noUpdateInTime, { jiraKey: project.jiraKey! }));
-						await jiraClient.issueComments.addComment({
-							issueIdOrKey: project.jiraKey!,
-							body: `Did not receive an update in time from [~${jiraUser.username}], automatically un-assigning.`,
-						});
-					});
-				}
-			}
-		}
-
-		if (project.updateRequest & (1 << 2)) {
-			const user = await UserInfo.findOne({
-				isAssigned: true,
-				assignedTo: project.jiraKey,
-				assignedAs: 'sqc',
-			}).exec();
-
-			if (user && (user.updateRequested! <= compareDate)) {
-				const discordUser = await client.users.fetch(user._id)
-					.catch((err) => {
-						logger.error(err);
-					});
-
-				if (discordUser) {
-					await jiraClient.issues.doTransition({
-						issueIdOrKey: project.jiraKey!,
-						fields: {
-							[config.jira.fields.SubQCAssignee]: null,
-						},
-						transition: {
-							id: config.jira.transitions['Assign SubQC'],
-						},
-					});
-
-					const { data: jiraUser } = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
-						params: { id: discordUser.id },
-						auth: {
-							username: config.oauthServer.clientId,
-							password: config.oauthServer.clientSecret,
-						},
-					}).catch((err) => {
-						logger.info(err.response.data);
-						throw new Error(err);
-					});
-
-					/* eslint-disable no-param-reassign */
-					project.staleCount += 1;
-					/* eslint-enable */
-					await project.save(async (err) => {
-						if (err) {
-							logger.error(err);
-							return;
-						}
-
-						await discordUser.send(format(strings.noUpdateInTime, { jiraKey: project.jiraKey! }));
-						await jiraClient.issueComments.addComment({
-							issueIdOrKey: project.jiraKey!,
-							body: `Did not receive an update in time from [~${jiraUser.username}], automatically un-assigning.`,
-						});
-					});
-				}
-			}
-		}
-	} else {
-		const user = await UserInfo.findOne({
-			isAssigned: true,
-			assignedTo: project.jiraKey,
-		}).exec();
-
-		if (user && (user.updateRequested! <= compareDate)) {
-			const discordUser = await client.users.fetch(user._id)
-				.catch((err) => {
-					logger.error(err);
-				});
-
-			if (discordUser) {
-				await jiraClient.issues.doTransition({
-					issueIdOrKey: project.jiraKey!,
-					fields: {
-						assignee: null,
-					},
-					transition: {
-						id: config.jira.transitions.Assign,
-					},
-				});
-
-				const { data: jiraUser } = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
-					params: { id: discordUser.id },
-					auth: {
-						username: config.oauthServer.clientId,
-						password: config.oauthServer.clientSecret,
-					},
-				}).catch((err) => {
-					logger.info(err.response.data);
-					throw new Error(err);
-				});
-
-				/* eslint-disable no-param-reassign */
-				project.staleCount += 1;
-				/* eslint-enable */
-				await project.save(async (err) => {
-					if (err) {
-						logger.error(err);
-						return;
-					}
-
-					await discordUser.send(format(strings.noUpdateInTime, { jiraKey: project.jiraKey! }));
-					await jiraClient.issueComments.addComment({
-						issueIdOrKey: project.jiraKey!,
-						body: `Did not receive an update in time from [~${jiraUser.username}], automatically un-assigning.`,
-					});
-				});
-			}
-		}
-	}
-}
-
-async function staleAnnounce(project: Document<any, any, Project> & Project) {
-	const teamLeadNotifySetting = await Setting.findById('teamLeadNotifyChannel').lean().exec();
-	const maxTimeTaken = await Setting.findById('maxTimeTaken').lean().exec();
-	if (maxTimeTaken) return;
-
-	if (teamLeadNotifySetting) {
-		const channel = await client.channels.fetch(teamLeadNotifySetting.value)
-			.catch((err) => {
-				logger.error(err);
-			}) as TextChannel;
-		if (channel) {
-			// TODO: Add buttons
-			await channel.send(`${project.jiraKey} has not transitioned in three weeks!`);
-		}
-	}
-	await jiraClient.issueComments.addComment({
-		issueIdOrKey: project.jiraKey!,
-		body: `Project hasn't transitioned in ${'three weeks' /* call humanize-duration instead */}, considering abandoned unless action is taken by team leads.`,
-	});
-
-	// eslint-disable-next-line no-param-reassign
-	project.abandoned = true;
-	await project.save((err) => {
-		if (err) logger.error(err);
-	});
-}
-
-cron.schedule('*/5 * * * *', async () => {
-	const autoAssignAfter = await Setting.findById('autoAssignAfter').lean().exec();
-
-	const toAutoAssign = await IdLink.find({
-		$or: [
-			{
-				status: 'Sub QC/Language QC',
-				hasAssignment: { $lt: (1 << 1) + (1 << 2) },
-			},
-			{
-				hasAssignment: 0,
-			},
-		],
-		$not: {
-			$or: [
-				// Ignore certain statuses and projects that do not have a message in Discord
-				{
-					status: 'Open',
-				},
-				{
-					status: 'Being clipped',
-				},
-				{
-					status: 'Ready for release',
-				},
-				{
-					discordMessageId: undefined,
-				},
-			],
-		},
-		finished: false,
-		abandoned: false,
-		lastUpdate: {
-			$lte: new Date(Date.now() - (
-				autoAssignAfter?.value ? parseInt(autoAssignAfter.value, 10) : (3 * 24 * 3600 * 1000))),
-		},
-	}).exec();
-
-	toAutoAssign.forEach((project) => {
-		if (project.status === 'Sub QC/Language QC') {
-			if (!(project.hasAssignment & (1 << 1))) {
-				autoAssign(project, 'lqc');
-			}
-			if (!(project.hasAssignment & (1 << 2))) {
-				autoAssign(project, 'sqc');
-			}
-		} else {
-			autoAssign(project);
-		}
-	});
-
-	const requestUpdateAfter = await Setting.findById('requestUpdateAfter').lean().exec();
-
-	const toRequestUpdate = await IdLink.find({
-		$or: [
-			{
-				status: 'Sub QC/Language QC',
-				updateRequest: { $lt: (1 << 1) + (1 << 2) },
-				$or: [
-					{
-						sqcLastUpdate: {
-							$lte: new Date(Date.now() - (
-								// eslint-disable-next-line max-len
-								requestUpdateAfter?.value ? parseInt(requestUpdateAfter.value, 10) : (3 * 24 * 3600 * 1000)
-							)),
-						},
-					},
-					{
-						lqcLastUpdate: {
-							$lte: new Date(Date.now() - (
-								// eslint-disable-next-line max-len
-								requestUpdateAfter?.value ? parseInt(requestUpdateAfter.value, 10) : (3 * 24 * 3600 * 1000)
-							)),
-						},
-					},
-				],
-			},
-			{
-				lastUpdate: {
-					$lte: new Date(Date.now() - (
-						// eslint-disable-next-line max-len
-						requestUpdateAfter?.value ? parseInt(requestUpdateAfter.value, 10) : (3 * 24 * 3600 * 1000)
-					)),
-				},
-				updateRequest: { $ne: 1 },
-			},
-		],
-		hasAssignment: { $gte: 1 },
-	}).exec();
-
-	toRequestUpdate.forEach((project) => {
-		projectStaleCheckRequest(project);
-	});
-
-	const toCheckUpdateRequest = await IdLink.find({
-		updateRequest: { $gte: 1 },
-		hasAssignment: { $gte: 1 },
-	}).exec();
-
-	toCheckUpdateRequest.forEach((project) => {
-		projectUpdateRequestCheck(project);
-	});
-
-	const toNotifyStale = await IdLink.find({
-		lastStatusChange: {
-			$lte: new Date(Date.now() - 3 * 7 * 24 * 3600 * 1000),
-		},
-		abandoned: false,
-	});
-
-	toNotifyStale.forEach((project) => {
-		staleAnnounce(project);
-	});
 });

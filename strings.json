@@ -11,8 +11,10 @@
   "unknownError": "Encountered an error, please try again. This error has been automatically logged.",
   "notAssignedAnymore": "You're currently not assigned to this project anymore, so cannot do this action.",
   "requestNotActive": "Request is not active anymore.",
-  "updateReceivedFromUser": "Update received, not staling project.",
+  "updateReceivedFromUser": "Project has been marked as in progress, you have {maxTime} to finish this project.",
   "projectAbandoned": "Abandoned project {jiraKey}.",
   "serviceOffline": "One of the required services is offline. Please try again later.",
-  "userNotFound": "I have no information about that user."
+  "userNotFound": "I have no information about that user.",
+  "updateRequest": "Project has not been marked in progress yet, please mark in progress when started. I'll remind you again in {time}.",
+  "lastUpdateUpdateRequest": "Project has not been marked in progress yet, please mark in progress when started. This is the last reminder, otherwise I'll un-assign you in {time}"
 }
