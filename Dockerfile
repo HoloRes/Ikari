@@ -5,6 +5,10 @@ ENV COMMIT_SHA=$sha
 ARG environment
 ENV ENVIRONMENT=$environment
 
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -yq build-essential python3 git
+
 # Create a folder for compiling
 WORKDIR /tmp
 COPY package.json .

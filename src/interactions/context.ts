@@ -1,6 +1,9 @@
 import Discord, { UserContextMenuInteraction } from 'discord.js';
+import Sentry from '@sentry/node';
+import format from 'string-template';
 import { allServicesOnline } from '../lib/middleware';
 import UserInfo from '../models/UserInfo';
+import { logger } from '../index';
 
 const strings = require('../../strings.json');
 const config = require('../../config.json');
@@ -13,8 +16,20 @@ export default async function userContextMenuInteractionHandler(interaction: Use
 	}
 	if (interaction.commandName === 'Show user info') {
 		await interaction.deferReply({ ephemeral: true });
+
+		let encounteredError = false;
+
 		const user = interaction.options.getUser('user', true);
-		const userDoc = await UserInfo.findById(user.id).exec();
+		const userDoc = await UserInfo.findById(user.id).exec()
+			.catch((err: Error) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching project link (${eventId})`);
+				logger.error(err);
+				interaction.editReply(format(strings.assignmentFail, { eventId }));
+				encounteredError = true;
+			});
+		if (encounteredError) return;
+
 		if (!userDoc) {
 			await interaction.editReply(strings.userNotFound);
 			return;

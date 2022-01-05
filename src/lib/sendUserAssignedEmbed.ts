@@ -1,6 +1,7 @@
 import Discord, { MessageActionRow, MessageButton } from 'discord.js';
+import Sentry from '@sentry/node';
 import { Project } from '../models/IdLink';
-import { jiraClient } from '../index';
+import { jiraClient, logger } from '../index';
 
 const config = require('../../config.json');
 
@@ -29,5 +30,10 @@ export default async function sendUserAssignedEmbed(project: Project, user: Disc
 		.setFooter({ text: project.jiraKey! })
 		.setURL(`${config.jira.url}/browse/${project.jiraKey}`);
 
-	await user.send({ embeds: [embed], components: [componentRow] });
+	await user.send({ embeds: [embed], components: [componentRow] })
+		.catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error sending message (${eventId})`);
+			logger.error(err);
+		});
 }

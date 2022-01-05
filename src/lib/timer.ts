@@ -6,6 +6,7 @@ import {
 } from 'discord.js';
 import humanizeDuration from 'humanize-duration';
 import cron from 'node-cron';
+import Sentry from '@sentry/node';
 import IdLink, { Project } from '../models/IdLink';
 import GroupLink from '../models/GroupLink';
 import UserInfo from '../models/UserInfo';
@@ -18,6 +19,8 @@ const config = require('../config.json');
 const strings = require('../strings.json');
 
 async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void> {
+	let encounteredError = false;
+
 	const hiatusRole = await GroupLink.findOne({ jiraName: 'Hiatus' }).exec();
 
 	const available = await UserInfo.find({
@@ -26,12 +29,22 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 			$ne: hiatusRole?._id ?? '0000',
 		},
 		isAssigned: false,
-	}).sort({ lastAssigned: 'desc' }).exec();
+	}).sort({ lastAssigned: 'desc' }).exec().catch((err) => {
+		const eventId = Sentry.captureException(err);
+		logger.error(`Encountered error while fetching project link (${eventId})`);
+		logger.error(err);
+		encounteredError = true;
+	});
+	if (encounteredError || !available) return;
 
 	const guild = await client.guilds.fetch(config.discord.guild)
 		.catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while fetching guild from Discord (${eventId})`);
 			logger.error(err);
+			encounteredError = true;
 		});
+	if (encounteredError) return;
 
 	if (!guild) return;
 	if (available.length === 0) {
@@ -39,35 +52,50 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 		return;
 	}
 
-	const filteredAvailable = available.filter(async (user) => {
-		const member = await guild.members.fetch(user._id)
-			.catch((err) => {
-				logger.error(err);
-			});
-		if (!member) return false;
-		return checkValid(member, project.status, project.languages, role);
-	});
-	if (filteredAvailable.length === 0) {
+	let filteredAvailable;
+	try {
+		filteredAvailable = available.filter(async (user) => {
+			const member = await guild.members.fetch(user._id)
+				.catch((err) => {
+					throw err;
+				});
+			if (!member) return false;
+			return checkValid(member, project.status, project.languages, role);
+		});
+	} catch (err) {
+		const eventId = Sentry.captureException(err);
+		logger.error(`Encountered error while filtering available users (${eventId})`);
+		logger.error(err);
+		return;
+	}
+
+	if (filteredAvailable?.length === 0) {
 		logger.info(`Somehow, there's no one available for: ${project.jiraKey}`);
 		return;
 	}
 
-	const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
+	const res = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
 		params: { id: filteredAvailable[0]._id },
 		auth: {
 			username: config.oauthServer.clientId,
 			password: config.oauthServer.clientSecret,
 		},
 	}).catch((err) => {
-		logger.log(err.response.data);
-		throw new Error(err);
+		const eventId = Sentry.captureException(err);
+		logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+		encounteredError = true;
 	});
+	if (encounteredError) return;
+	const user = res!.data;
 
 	const discordUser = await client.users.fetch(filteredAvailable[0]._id)
 		.catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while fetching user on Discord (${eventId})`);
 			logger.error(err);
+			encounteredError = true;
 		});
-	if (!discordUser) return;
+	if (encounteredError || !discordUser) return;
 
 	// Role is only set in SQC/LQC status
 	if (role) {
@@ -83,13 +111,22 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 					id: config.jira.transitions['Assign SubQC'],
 				},
 			}).then(async () => {
-				await discordUser.send(format(strings.autoAssignedTo, { jiraKey: project.jiraKey }));
+				await discordUser.send(format(strings.autoAssignedTo, { jiraKey: project.jiraKey }))
+					.catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error sending message (${eventId})`);
+						logger.error(err);
+					});
 				await jiraClient.issueComments.addComment({
 					issueIdOrKey: project.jiraKey!,
 					body: `Auto assigned SubQC to [~${user.username}].`,
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while adding comment on Jira (${eventId})`);
 				});
 			}).catch((err) => {
-				logger.error(err);
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error sending message (${eventId})`);
 			});
 		} else if (role === 'lqc') {
 			await jiraClient.issues.doTransition({
@@ -107,9 +144,13 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 				await jiraClient.issueComments.addComment({
 					issueIdOrKey: project.jiraKey!,
 					body: `Auto assigned LQC to [~${user.username}].`,
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while adding comment on Jira (${eventId})`);
 				});
 			}).catch((err) => {
-				logger.error(err);
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error transitioning issue (${eventId})`);
 			});
 		}
 	} else {
@@ -128,14 +169,20 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 			await jiraClient.issueComments.addComment({
 				issueIdOrKey: project.jiraKey!,
 				body: `Auto assigned project to [~${user.username}].`,
+			}).catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while adding comment on Jira (${eventId})`);
 			});
 		}).catch((err) => {
-			logger.error(err);
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error transitioning issue (${eventId})`);
 		});
 	}
 }
 
 async function projectRequestInProgressMark(project: Document<any, any, Project> & Project) {
+	let encounteredError = false;
+
 	const repeatRequestAfter = await Setting.findById('repeatRequestAfter').lean().exec();
 	const compareDate = new Date(
 		Date.now()
@@ -149,13 +196,24 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 				isAssigned: true,
 				assignedTo: project.jiraKey,
 				assignedAs: 'lqc',
-			}).exec();
+			}).exec().catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching user doc (${eventId})`);
+				logger.error(err);
+				encounteredError = true;
+			});
+			if (encounteredError) return;
 
 			if (user && (user.updateRequested! < compareDate)) {
 				const discordUser = await client.users.fetch(user._id)
 					.catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching user on Discord(${eventId})`);
 						logger.error(err);
+						encounteredError = true;
 					});
+				if (encounteredError) return;
+
 				if (discordUser) {
 					if (user.updateRequestCount === 3) {
 						await jiraClient.issues.doTransition({
@@ -166,32 +224,49 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 							transition: {
 								id: config.jira.transitions['Assign LQC'],
 							},
+						}).catch((err) => {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error transitioning issue (${eventId})`);
 						});
 
-						const { data: jiraUser } = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
+						const res = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
 							params: { id: discordUser.id },
 							auth: {
 								username: config.oauthServer.clientId,
 								password: config.oauthServer.clientSecret,
 							},
 						}).catch((err) => {
-							logger.info(err.response.data);
-							throw new Error(err);
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+							encounteredError = true;
 						});
+						if (encounteredError) return;
+						const jiraUser = res!.data;
 
 						/* eslint-disable no-param-reassign */
 						project.staleCount += 1;
 						/* eslint-enable */
 						project.save(async (err) => {
 							if (err) {
+								const eventId = Sentry.captureException(err);
+								logger.error(`Encountered error while saving issue link (${eventId})`);
 								logger.error(err);
 								return;
 							}
 
-							await discordUser.send(format(strings.noUpdateInTime, { jiraKey: project.jiraKey! }));
+							await discordUser.send(format(strings.noUpdateInTime, { jiraKey: project.jiraKey! }))
+								.catch((e) => {
+									const eventId = Sentry.captureException(e);
+									logger.error(`Encountered error while sending message (${eventId})`);
+									logger.error(e);
+								});
+
 							await jiraClient.issueComments.addComment({
 								issueIdOrKey: project.jiraKey!,
 								body: `Did not receive an update in time from [~${jiraUser.username}], automatically un-assigning.`,
+							}).catch((e) => {
+								const eventId = Sentry.captureException(e);
+								logger.error(`Encountered error while adding comment on Jira (${eventId})`);
 							});
 						});
 						return;
@@ -218,15 +293,29 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 
 					if (user.updateRequestCount === 2) embed.setDescription(format(strings.lastUpdateUpdateRequest, { time: `<t:${Math.floor(new Date(Date.now() + (repeatRequestAfter ? parseInt(repeatRequestAfter.value, 10) : 4 * 24 * 60 * 60 * 1000)).getTime() / 1000)}:R>` }));
 
-					await discordUser.send({ embeds: [embed], components: [componentRow] });
+					await discordUser.send({ embeds: [embed], components: [componentRow] })
+						.catch((err) => {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error sending message (${eventId})`);
+							logger.error(err);
+						});
 					user.updateRequested = new Date();
 					user.updateRequestCount += 1;
+
 					await user.save((err) => {
-						if (err) logger.error(err);
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving user doc (${eventId})`);
+							logger.error(err);
+						}
 					});
+
 					await jiraClient.issueComments.addComment({
 						issueIdOrKey: project.jiraKey!,
 						body: 'Project has not been marked in progress yet, asking again.',
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while adding comment on Jira (${eventId})`);
 					});
 				}
 			}
@@ -236,13 +325,24 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 				isAssigned: true,
 				assignedTo: project.jiraKey,
 				assignedAs: 'sqc',
-			}).exec();
+			}).exec().catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching user doc (${eventId})`);
+				logger.error(err);
+				encounteredError = true;
+			});
+			if (encounteredError) return;
 
 			if (user && (user.updateRequested! < compareDate)) {
 				const discordUser = await client.users.fetch(user._id)
 					.catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching user on Discord(${eventId})`);
 						logger.error(err);
+						encounteredError = true;
 					});
+				if (encounteredError) return;
+
 				if (discordUser) {
 					if (user.updateRequestCount === 3) {
 						await jiraClient.issues.doTransition({
@@ -253,32 +353,48 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 							transition: {
 								id: config.jira.transitions['Assign SubQC'],
 							},
+						}).catch((err) => {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error transitioning issue (${eventId})`);
 						});
 
-						const { data: jiraUser } = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
+						const res = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
 							params: { id: discordUser.id },
 							auth: {
 								username: config.oauthServer.clientId,
 								password: config.oauthServer.clientSecret,
 							},
 						}).catch((err) => {
-							logger.info(err.response.data);
-							throw new Error(err);
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+							encounteredError = true;
 						});
+						if (encounteredError) return;
+						const jiraUser = res!.data;
 
 						/* eslint-disable no-param-reassign */
 						project.staleCount += 1;
 						/* eslint-enable */
 						project.save(async (err) => {
 							if (err) {
+								const eventId = Sentry.captureException(err);
+								logger.error(`Encountered error while saving issue link (${eventId})`);
 								logger.error(err);
 								return;
 							}
 
-							await discordUser.send(format(strings.noUpdateInTime, { jiraKey: project.jiraKey! }));
+							await discordUser.send(format(strings.noUpdateInTime, { jiraKey: project.jiraKey! }))
+								.catch((e) => {
+									const eventId = Sentry.captureException(e);
+									logger.error(`Encountered error while sending message (${eventId})`);
+								});
+
 							await jiraClient.issueComments.addComment({
 								issueIdOrKey: project.jiraKey!,
 								body: `Did not receive an update in time from [~${jiraUser.username}], automatically un-assigning.`,
+							}).catch((e) => {
+								const eventId = Sentry.captureException(e);
+								logger.error(`Encountered error while adding comment on Jira (${eventId})`);
 							});
 						});
 						return;
@@ -309,11 +425,18 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 					user.updateRequested = new Date();
 					user.updateRequestCount += 1;
 					await user.save((err) => {
-						if (err) logger.error(err);
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving user doc (${eventId})`);
+							logger.error(err);
+						}
 					});
 					await jiraClient.issueComments.addComment({
 						issueIdOrKey: project.jiraKey!,
 						body: 'Project has not been marked in progress yet, asking again.',
+					}).catch((e) => {
+						const eventId = Sentry.captureException(e);
+						logger.error(`Encountered error while adding comment on Jira (${eventId})`);
 					});
 				}
 			}
@@ -323,13 +446,24 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 			isAssigned: true,
 			assignedTo: project.jiraKey,
 			assignedAs: 'sqc',
-		}).exec();
+		}).exec().catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while fetching user doc (${eventId})`);
+			logger.error(err);
+			encounteredError = true;
+		});
+		if (encounteredError) return;
 
 		if (user && (user.updateRequested! < compareDate)) {
 			const discordUser = await client.users.fetch(user._id)
 				.catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching user on Discord(${eventId})`);
 					logger.error(err);
+					encounteredError = true;
 				});
+			if (encounteredError) return;
+
 			if (discordUser) {
 				if (user.updateRequestCount === 3) {
 					await jiraClient.issues.doTransition({
@@ -340,32 +474,48 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 						transition: {
 							id: config.jira.transitions.Assign,
 						},
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error transitioning issue (${eventId})`);
 					});
 
-					const { data: jiraUser } = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
+					const res = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
 						params: { id: discordUser.id },
 						auth: {
 							username: config.oauthServer.clientId,
 							password: config.oauthServer.clientSecret,
 						},
 					}).catch((err) => {
-						logger.info(err.response.data);
-						throw new Error(err);
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+						encounteredError = true;
 					});
+					if (encounteredError) return;
+					const jiraUser = res!.data;
 
 					/* eslint-disable no-param-reassign */
 					project.staleCount += 1;
 					/* eslint-enable */
 					project.save(async (err) => {
 						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving issue link (${eventId})`);
 							logger.error(err);
 							return;
 						}
 
-						await discordUser.send(format(strings.noUpdateInTime, { jiraKey: project.jiraKey! }));
+						await discordUser.send(format(strings.noUpdateInTime, { jiraKey: project.jiraKey! }))
+							.catch((e) => {
+								const eventId = Sentry.captureException(e);
+								logger.error(`Encountered error while sending message (${eventId})`);
+							});
+
 						await jiraClient.issueComments.addComment({
 							issueIdOrKey: project.jiraKey!,
 							body: `Did not receive an update in time from [~${jiraUser.username}], automatically un-assigning.`,
+						}).catch((e) => {
+							const eventId = Sentry.captureException(e);
+							logger.error(`Encountered error while adding comment on Jira (${eventId})`);
 						});
 					});
 					return;
@@ -392,21 +542,40 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 
 				if (user.updateRequestCount === 2) embed.setDescription(format(strings.lastUpdateUpdateRequest, { time: `<t:${Math.floor(new Date(Date.now() + (repeatRequestAfter ? parseInt(repeatRequestAfter.value, 10) : 4 * 24 * 60 * 60 * 1000)).getTime() / 1000)}:R>` }));
 
-				await discordUser.send({ embeds: [embed], components: [componentRow] });
+				await discordUser.send({ embeds: [embed], components: [componentRow] })
+					.catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error sending message (${eventId})`);
+						logger.error(err);
+					});
+
 				user.updateRequested = new Date();
 				user.updateRequestCount += 1;
+
 				await user.save((err) => {
-					if (err) logger.error(err);
+					if (err) {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while saving user doc (${eventId})`);
+						logger.error(err);
+					}
 				});
+
 				await jiraClient.issueComments.addComment({
 					issueIdOrKey: project.jiraKey!,
 					body: 'Project has not been marked in progress yet, asking again.',
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while adding comment on Jira (${eventId})`);
 				});
 			}
 		}
 	}
 	await project.save((err) => {
-		if (err) logger.error(err);
+		if (err) {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while saving issue link (${eventId})`);
+			logger.error(err);
+		}
 	});
 }
 
@@ -428,6 +597,8 @@ async function staleAnnounce(project: Document<any, any, Project> & Project) {
 	if (teamLeadNotifySetting) {
 		channel = await client.channels.fetch(teamLeadNotifySetting.value)
 			.catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching Discord channel (${eventId})`);
 				logger.error(err);
 			}) as TextChannel;
 	}
@@ -454,7 +625,11 @@ async function staleAnnounce(project: Document<any, any, Project> & Project) {
 			await jiraClient.issueComments.addComment({
 				issueIdOrKey: project.jiraKey!,
 				body: `LQC hasn't finished in ${maxTimeStr}, reporting to team leads.`,
+			}).catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while adding comment on Jira (${eventId})`);
 			});
+
 			componentRow.addComponents(
 				new MessageButton()
 					.setStyle('PRIMARY')
@@ -470,7 +645,11 @@ async function staleAnnounce(project: Document<any, any, Project> & Project) {
 			await jiraClient.issueComments.addComment({
 				issueIdOrKey: project.jiraKey!,
 				body: `SubQC hasn't finished in ${maxTimeStr}, reporting to team leads.`,
+			}).catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while adding comment on Jira (${eventId})`);
 			});
+
 			componentRow.addComponents(
 				new MessageButton()
 					.setStyle('PRIMARY')
@@ -486,8 +665,16 @@ async function staleAnnounce(project: Document<any, any, Project> & Project) {
 				// eslint-disable-next-line no-param-reassign
 				project.requestedTeamLeadAction = true;
 				await project.save((err) => {
-					if (err) logger.error(err);
+					if (err) {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while saving issue link (${eventId})`);
+						logger.error(err);
+					}
 				});
+			}).catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while sending message (${eventId})`);
+				logger.error(err);
 			});
 		}
 	} else {
@@ -506,6 +693,9 @@ async function staleAnnounce(project: Document<any, any, Project> & Project) {
 		await jiraClient.issueComments.addComment({
 			issueIdOrKey: project.jiraKey!,
 			body: `Project hasn't transitioned in ${maxTimeStr}, reporting to team leads.`,
+		}).catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while adding comment on Jira (${eventId})`);
 		});
 
 		await channel.send({
@@ -515,7 +705,11 @@ async function staleAnnounce(project: Document<any, any, Project> & Project) {
 			// eslint-disable-next-line no-param-reassign
 			project.requestedTeamLeadAction = true;
 			await project.save((err) => {
-				if (err) logger.error(err);
+				if (err) {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while saving issue link (${eventId})`);
+					logger.error(err);
+				}
 			});
 		});
 	}
@@ -562,9 +756,13 @@ cron.schedule('*/5 * * * *', async () => {
 			$lte: new Date(Date.now() - (
 				autoAssignAfter ? parseInt(autoAssignAfter.value, 10) : (3 * 24 * 3600 * 1000))),
 		},
-	}).exec();
+	}).exec().catch((err) => {
+		const eventId = Sentry.captureException(err);
+		logger.error(`Encountered error while fetching docs (autoassign) (${eventId})`);
+		logger.error(err);
+	});
 
-	toAutoAssign.forEach((project) => {
+	toAutoAssign?.forEach((project) => {
 		if (project.status === 'Sub QC/Language QC') {
 			if (!(project.hasAssignment & (1 << 1))) {
 				autoAssign(project, 'lqc');
@@ -588,13 +786,22 @@ cron.schedule('*/5 * * * *', async () => {
 			},
 		],
 		hasAssignment: { $gte: 1 },
-	}).exec();
+	}).exec().catch((err) => {
+		const eventId = Sentry.captureException(err);
+		logger.error(`Encountered error while fetching docs (requestInProgress) (${eventId})`);
+		logger.error(err);
+	});
 
-	toRequestInProgress.forEach((project) => {
+	toRequestInProgress?.forEach((project) => {
 		projectRequestInProgressMark(project);
 	});
 
-	const maxTimeTaken = await Setting.findById('maxTimeTaken').lean().exec();
+	const maxTimeTaken = await Setting.findById('maxTimeTaken').lean().exec()
+		.catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while fetching setting (maxTimeTaken), falling back to default value (${eventId})`);
+			logger.error(err);
+		});
 	// eslint-disable-next-line max-len
 	const compareDate = new Date(Date.now() - (maxTimeTaken ? parseInt(maxTimeTaken.value, 10) : (30 * 24 * 60 * 60 * 1000)));
 
@@ -654,9 +861,13 @@ cron.schedule('*/5 * * * *', async () => {
 				},
 			],
 		},
+	}).exec().catch((err) => {
+		const eventId = Sentry.captureException(err);
+		logger.error(`Encountered error while fetching docs (notifyStale) (${eventId})`);
+		logger.error(err);
 	});
 
-	toNotifyStale.forEach((project) => {
+	toNotifyStale?.forEach((project) => {
 		staleAnnounce(project);
 	});
 });

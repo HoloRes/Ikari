@@ -1,12 +1,13 @@
 // Imports
 import { Router, Request } from 'express';
 import {
-	BaseGuildTextChannel, MessageActionRow, MessageButton, MessageEmbed,
+	BaseGuildTextChannel, Message, MessageActionRow, MessageButton, MessageEmbed, TextChannel,
 } from 'discord.js';
 import axios from 'axios';
+import Sentry from '@sentry/node';
+import { Version2Models } from 'jira.js';
 import { logger, client, jiraClient } from './index';
 import IdLink from './models/IdLink';
-import { components } from './types/jira';
 import StatusLink from './models/StatusLink';
 import UserInfo from './models/UserInfo';
 import sendUserAssignedEmbed from './lib/sendUserAssignedEmbed';
@@ -27,11 +28,11 @@ type JiraField = {
 interface WebhookBody {
 	timestamp: string;
 	webhookEvent: string;
-	user: components['schemas']['UserBean'];
-	issue: components['schemas']['IssueBean'];
-	changelog: components['schemas']['Changelog'];
-	comment: components['schemas']['Comment'];
-	transition: components['schemas']['Transition'] & { transitionName: string };
+	user: Version2Models.DashboardUser;
+	issue: Version2Models.Issue;
+	changelog: Version2Models.Changelog;
+	comment: Version2Models.Comment;
+	transition: Version2Models.Transition & { transitionName: string };
 }
 
 // Routes
@@ -43,20 +44,36 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 	res.status(200).end();
 
 	if (req.body.webhookEvent && req.body.webhookEvent === 'jira:issue_created') {
+		logger.verbose('New Jira issue webhook triggered');
+
+		let encounteredError = false;
 		const channelLink = await StatusLink.findById(req.body.issue.fields!.status.name).lean().exec()
 			.catch((err) => {
-				throw new Error(err);
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while finding channel link (${eventId})`);
+				logger.error(err);
+				encounteredError = true;
 			});
+		if (encounteredError) return;
 
-		// eslint-disable-next-line consistent-return
-		if (!channelLink) return logger.warn(`No channel link for ${req.body.issue.fields!.status.name} found!`);
+		if (!channelLink) {
+			logger.warn(`No channel link for ${req.body.issue.fields!.status.name} found!`);
+			return;
+		}
 
 		const channel = await client.channels.fetch(channelLink.channel)
 			.catch((err) => {
-				throw new Error(err);
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while finding Discord channel (${eventId})`);
+				logger.error(err);
+				encounteredError = true;
 			}) as unknown as BaseGuildTextChannel | null;
+		if (encounteredError) return;
 
-		if (channel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${channelLink.channel} is not a guild text channel`);
+		if (channel?.type !== 'GUILD_TEXT') {
+			logger.error(`Channel: ${channelLink.channel} is not a guild text channel`);
+			return;
+		}
 
 		const link = new IdLink({
 			jiraKey: req.body.issue.key,
@@ -72,35 +89,57 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			.setTitle(`${req.body.issue.key}`)
 			.setColor('#0052cc')
 			.setDescription(req.body.issue.fields!.summary ?? 'No description available')
-			.addField('Status', req.body.issue.fields!.status.name)
+			.addField('Status', req.body.issue.fields!.status.name!)
 			.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
 			.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
 			.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
 
 		const msg = await channel.send({ content: 'A new project is available and can be picked up in Jira', embeds: [embed] })
 			.catch((err) => {
-				throw new Error(err);
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while sending message (${eventId})`);
+				logger.error(err);
+				encounteredError = true;
 			});
-		link.discordMessageId = msg.id;
+		if (encounteredError) return;
+
+		link.discordMessageId = msg!.id;
 		link.save((err) => {
-			if (err) throw err;
+			if (err) {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while saving issue link (${eventId})`);
+				logger.error(err);
+			}
 		});
 	} else {
+		let encounteredError = false;
 		// Get the project from the db
 		const link = await IdLink.findOne({ jiraKey: req.body.issue.key })
 			.exec()
 			.catch((err) => {
-				throw err;
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while finding issue link (${eventId})`);
+				logger.error(err);
+				encounteredError = true;
 			});
+		if (encounteredError) return;
 
-		// eslint-disable-next-line max-len
-		// TODO: For prod, create a link if it doesn't exist, expect Ikari to be offline/crashed in those cases.
-		if (!link || link.finished || link.abandoned) return;
+		if (!link) {
+			// eslint-disable-next-line max-len
+			// TODO: For prod, create a link if it doesn't exist, expect Ikari to be offline/crashed in those cases.
+			return;
+		}
+
+		if (link.finished || link.abandoned) return;
 
 		const statusLink = await StatusLink.findById(link.status).lean().exec()
 			.catch((err) => {
-				throw err;
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while finding status link (${eventId})`);
+				logger.error(err);
+				encounteredError = true;
 			});
+		if (encounteredError) return;
 
 		const transitionName = req.body.transition?.transitionName;
 
@@ -108,22 +147,43 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			if (link.discordMessageId && statusLink) {
 				const channel = await client.channels.fetch(statusLink.channel)
 					.catch((err) => {
-						throw new Error(err);
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while finding discord channel (${eventId})`);
+						logger.error(err);
+						encounteredError = true;
 					}) as unknown as BaseGuildTextChannel | null;
+				if (encounteredError) return;
 
-				if (channel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${statusLink.channel} is not a guild text channel`);
+				if (channel?.type !== 'GUILD_TEXT') {
+					logger.error(`Channel: ${statusLink.channel} is not a guild text channel`);
+					return;
+				}
 
 				const msg = await channel.messages.fetch(link.discordMessageId)
 					.catch((err) => {
-						throw new Error(err);
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching message (${eventId})`);
+						logger.error(err);
+						encounteredError = true;
 					});
-				await msg.delete();
+				if (encounteredError) return;
+
+				await msg!.delete()
+					.catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while deleting message (${eventId})`);
+						logger.error(err);
+					});
 			} else if (link.discordMessageId) {
 				// eslint-disable-next-line max-len
 				const channelLink = await StatusLink.findById(req.body.issue.fields!.status.name).lean().exec()
 					.catch((err) => {
-						throw new Error(err);
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching channel link (${eventId})`);
+						logger.error(err);
+						encounteredError = true;
 					});
+				if (encounteredError) return;
 
 				if (!channelLink) {
 					logger.warn(`No channel link for ${req.body.issue.fields!.status.name} found!`);
@@ -132,24 +192,44 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 				const channel = await client.channels.fetch(channelLink.channel)
 					.catch((err) => {
-						throw new Error(err);
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while finding discord channel (${eventId})`);
+						logger.error(err);
+						encounteredError = true;
 					}) as unknown as BaseGuildTextChannel | null;
+				if (encounteredError) return;
 
-				if (channel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${channelLink.channel} is not a guild text channel`);
+				if (channel?.type !== 'GUILD_TEXT') {
+					logger.error(`Channel: ${channelLink.channel} is not a guild text channel`);
+					return;
+				}
 
 				const msg = await channel.messages.fetch(link.discordMessageId)
 					.catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching message (${eventId})`);
 						logger.error(err);
+						encounteredError = true;
 					});
 				if (!msg) return;
-				await msg.delete();
+				await msg.delete()
+					.catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while deleting message (${eventId})`);
+						logger.error(err);
+					});
+				return;
 			}
 
 			// eslint-disable-next-line max-len
 			const channelLink = await StatusLink.findById(req.body.issue.fields!.status.name).lean().exec()
 				.catch((err) => {
-					throw new Error(err);
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching channel link (${eventId})`);
+					logger.error(err);
+					encounteredError = true;
 				});
+			if (encounteredError) return;
 
 			if (!channelLink) {
 				logger.warn(`No channel link for ${req.body.issue.fields!.status.name} found!`);
@@ -158,10 +238,17 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 			const channel = await client.channels.fetch(channelLink.channel)
 				.catch((err) => {
-					throw new Error(err);
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while finding discord channel (${eventId})`);
+					logger.error(err);
+					encounteredError = true;
 				}) as unknown as BaseGuildTextChannel | null;
+			if (encounteredError) return;
 
-			if (channel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${channelLink.channel} is not a guild text channel`);
+			if (channel?.type !== 'GUILD_TEXT') {
+				logger.error(`Channel: ${channelLink.channel} is not a guild text channel`);
+				return;
+			}
 
 			const embed = new MessageEmbed()
 				.setTitle(`${req.body.issue.key}`)
@@ -174,12 +261,21 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 			const msg = await channel.send({ content: 'A new project is available and can be picked up in Jira', embeds: [embed] })
 				.catch((err) => {
-					throw new Error(err);
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while sending message (${eventId})`);
+					logger.error(err);
+					encounteredError = true;
 				});
-			link.discordMessageId = msg.id;
+			if (encounteredError) return;
+
+			link.discordMessageId = msg!.id;
 			link.status = req.body.issue.fields!.status.name;
 			link.save((err) => {
-				if (err) throw err;
+				if (err) {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while saving issue link (${eventId})`);
+					logger.error(err);
+				}
 			});
 			return;
 		}
@@ -191,7 +287,10 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						throw new Error(err);
 					}) as unknown as BaseGuildTextChannel | null;
 
-				if (channel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${statusLink.channel} is not a guild text channel`);
+				if (channel?.type !== 'GUILD_TEXT') {
+					logger.error(`Channel: ${statusLink.channel} is not a guild text channel`);
+					return;
+				}
 
 				const msg = await channel.messages.fetch(link.discordMessageId)
 					.catch((err) => {
@@ -202,7 +301,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			if (transitionName === 'Uploaded') link.finished = true;
 			if (transitionName === 'Abandon project') link.abandoned = true;
 			link.save((err) => {
-				if (err) throw err;
+				if (err) {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while saving issue link (${eventId})`);
+					logger.error(err);
+				}
 			});
 			return;
 		}
@@ -213,33 +316,47 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					id: config.jira.transitions['Send to translator'],
 				},
 			}).catch((err) => {
-				throw err;
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while transitioning issue ${req.body.issue.key!} (${eventId})`);
+				encounteredError = true;
 			});
+			if (encounteredError) return;
 
-			const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+			const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
 				params: { key: req.body.user.key },
 				auth: {
 					username: config.oauthServer.clientId,
 					password: config.oauthServer.clientSecret,
 				},
 			}).catch((err) => {
-				logger.error(err.response.data);
-				throw new Error(err);
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+				encounteredError = true;
 			});
+			if (encounteredError) return;
+			const user = oauthUserRes!.data;
 
 			const discordUser = await client.users.fetch(user._id)
 				.catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching Discord user (${eventId})`);
 					logger.error(err);
-					throw err;
+					encounteredError = true;
 				});
+			if (encounteredError) return;
 
-			discordUser.send(strings.IkariClippingNotAvailable);
+			discordUser!.send(strings.IkariClippingNotAvailable)
+				.catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while sending message to Discord user (${eventId})`);
+					logger.error(err);
+				});
 			return;
 		}
 
 		// If the status doesn't have a Discord channel linked to it or the project has no message
 		if (!statusLink || !link.discordMessageId) {
-			logger.warn(`No link found for: ${link.status}`);
+			logger.verbose(`No link found for: ${link.status}`);
 			// TODO: cleanup
 			// Only do something with the project if there's a status change
 			if (req.body.issue.fields!.status.name !== link.status) {
@@ -253,7 +370,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 							.setDisabled(req.body.issue.fields!.assignee !== null),
 					);
 
-				// Unassign all users who were assigned in the previous status
+				// Un-assign all users who were assigned in the previous status
 				const assignedUsers = await UserInfo.find({ assignedTo: req.body.issue.key }).exec();
 				assignedUsers.forEach((user) => {
 					/* eslint-disable no-param-reassign */
@@ -262,7 +379,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					user.assignedAs = undefined;
 					user.assignedTo = undefined;
 					user.save((err) => {
-						if (err) logger.error(err);
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving user document (${eventId})`);
+							logger.error(err);
+						}
 					});
 					/* eslint-enable */
 				});
@@ -275,8 +396,12 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					link.hasAssignment = 0;
 					link.finished = true;
 
-					await link.save((err) => {
-						if (err) logger.error(err);
+					link.save((err) => {
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving issue link (${eventId})`);
+							logger.error(err);
+						}
 					});
 					return;
 				}
@@ -284,28 +409,43 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				// eslint-disable-next-line max-len
 				const newStatusLink = await StatusLink.findById(req.body.issue.fields!.status.name).lean().exec()
 					.catch((err) => {
-						throw err;
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching status link (${eventId})`);
+						logger.error(err);
+						encounteredError = true;
 					});
+				if (encounteredError) return;
 
 				if (!newStatusLink) {
-					logger.warn(`No channel link found for: ${req.body.issue.fields!.status.name}`);
+					logger.warn(`No channel link found for: ${req.body.issue.fields!.status.name!}`);
 					link.discordMessageId = undefined;
-					link.status = req.body.issue.fields!.status.name;
+					link.status = req.body.issue.fields!.status.name!;
 					link.lastUpdate = new Date();
 					link.hasAssignment = 0;
 
-					await link.save((err) => {
-						if (err) logger.error(err);
+					link.save((err) => {
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving issue link (${eventId})`);
+							logger.error(err);
+						}
 					});
 					return;
 				}
 
 				const newChannel = await client.channels.fetch(newStatusLink.channel)
 					.catch((err) => {
-						throw new Error(err);
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching Discord channel (${eventId})`);
+						logger.error(err);
+						encounteredError = true;
 					}) as unknown as BaseGuildTextChannel | null;
+				if (encounteredError) return;
 
-				if (newChannel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${newStatusLink.channel} is not a guild text channel`);
+				if (newChannel?.type !== 'GUILD_TEXT') {
+					logger.error(`Channel: ${newStatusLink.channel} is not a guild text channel`);
+					return;
+				}
 
 				if (req.body.issue.fields!.status.name === 'Sub QC/Language QC') {
 					const newRow = new MessageActionRow()
@@ -341,17 +481,27 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					const newMsg = await newChannel.send({
 						embeds: [embed],
 						components: [newRow],
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while sending message (${eventId})`);
+						logger.error(err);
+						encounteredError = true;
 					});
+					if (encounteredError) return;
 
-					link.discordMessageId = newMsg.id;
+					link.discordMessageId = newMsg!.id;
 					link.status = req.body.issue.fields!.status.name;
 					link.lastUpdate = new Date();
 					link.lqcProgressStart = undefined;
 					link.sqcProgressStart = undefined;
 					link.hasAssignment = 0;
 
-					await link.save((err) => {
-						if (err) logger.error(err);
+					link.save((err) => {
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error saving issue link (${eventId})`);
+							logger.error(err);
+						}
 					});
 				} else if (req.body.issue.fields!.status.name === 'Ready for release') {
 					const embed = new MessageEmbed()
@@ -365,30 +515,43 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					const newMsg = await newChannel.send({
 						content: 'New project ready for release',
 						embeds: [embed],
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while sending message (${eventId})`);
+						logger.error(err);
+						encounteredError = true;
 					});
+					if (encounteredError) return;
 
-					link.discordMessageId = newMsg.id;
+					link.discordMessageId = newMsg!.id;
 					link.status = req.body.issue.fields!.status.name;
 					link.lastUpdate = new Date();
 					link.hasAssignment = 0;
 
-					await link.save((err) => {
-						if (err) logger.error(err);
+					link.save((err) => {
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error saving issue link (${eventId})`);
+							logger.error(err);
+						}
 					});
 				} else {
 					let user: any | undefined;
 					if (req.body.issue.fields!.assignee !== null) {
-						const { data } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+						const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
 							params: { key: req.body.issue.fields!.assignee.key },
 							auth: {
 								username: config.oauthServer.clientId,
 								password: config.oauthServer.clientSecret,
 							},
 						}).catch((err) => {
-							logger.error(err.response.data);
-							throw new Error(err);
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+							encounteredError = true;
 						});
-						user = data;
+						if (encounteredError) return;
+
+						user = oauthUserRes!.data;
 						link.hasAssignment = (1 << 0);
 					} else {
 						link.hasAssignment = 0;
@@ -398,7 +561,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields!.summary}`)
 						.setColor('#0052cc')
 						.setDescription(req.body.issue.fields!.description ?? 'No description available')
-						.addField('Status', req.body.issue.fields!.status.name)
+						.addField('Status', req.body.issue.fields!.status.name!)
 						.addField('Assignee', user ? `<@${user._id}>` : 'Unassigned')
 						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
 						.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
@@ -407,14 +570,22 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					const newMsg = await newChannel.send({
 						embeds: [embed],
 						components: [row],
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while sending message (${eventId})`);
+						logger.error(err);
 					});
 
-					link.discordMessageId = newMsg.id;
-					link.status = req.body.issue.fields!.status.name;
+					link.discordMessageId = newMsg?.id ?? undefined;
+					link.status = req.body.issue.fields!.status.name!;
 					link.lastUpdate = new Date();
 
-					await link.save((err) => {
-						if (err) logger.error(err);
+					link.save((err) => {
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error saving issue link (${eventId})`);
+							logger.error(err);
+						}
 					});
 				}
 			}
@@ -423,15 +594,26 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 		const channel = await client.channels.fetch(statusLink.channel)
 			.catch((err) => {
-				throw new Error(err);
-			}) as unknown as BaseGuildTextChannel | null;
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching Discord channel (${eventId})`);
+				logger.error(err);
+				encounteredError = true;
+			}) as TextChannel | null;
+		if (encounteredError) return;
 
-		if (channel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${statusLink.channel} is not a guild text channel`);
+		if (channel?.type !== 'GUILD_TEXT') {
+			logger.error(`Channel: ${statusLink.channel} is not a guild text channel`);
+			return;
+		}
 
 		const msg = await channel.messages.fetch(link.discordMessageId!)
 			.catch((err) => {
-				throw new Error(err);
-			});
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching message (${eventId})`);
+				logger.error(err);
+				encounteredError = true;
+			}) as Message;
+		if (encounteredError || !msg) return;
 
 		if (transitionName === 'Assign') {
 			const row = new MessageActionRow()
@@ -453,21 +635,34 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						link.inProgress -= (1 << 0);
 					}
 
-					link.save((err) => {
-						if (err) logger.error(err);
-					});
-
 					const user = await UserInfo.findOne({ assignedTo: link.jiraKey }).exec()
 						.catch((err) => {
-							if (err) logger.log(err);
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while fetching user from db (${eventId})`);
+							logger.error(err);
+							encounteredError = true;
 						});
-					if (!user) return;
+					if (encounteredError || !user) return;
+
 					user.isAssigned = false;
 					user.assignedAs = undefined;
 					user.assignedTo = undefined;
 					user.lastAssigned = new Date();
+
+					link.save((err) => {
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving issue link (${eventId})`);
+							logger.error(err);
+						}
+					});
+
 					user.save((err) => {
-						if (err) logger.error(err);
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving user in db (${eventId})`);
+							logger.error(err);
+						}
 					});
 				}
 
@@ -475,19 +670,31 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					name: 'Assignee',
 					value: 'Unassigned',
 				} as any);
+
 				const status = req.body.issue.fields!.status.name;
-				msg.edit({ embeds: [embed], components: (status === 'Open' || status === 'Rejected' || status === 'Being clipped' || status === 'Uploaded') ? [] : [row] });
+
+				await msg.edit({
+					embeds: [embed],
+					components: (status === 'Open' || status === 'Rejected' || status === 'Being clipped' || status === 'Uploaded') ? [] : [row],
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while editing message in Discord user (${eventId})`);
+					logger.error(err);
+				});
 			} else {
-				const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+				const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
 					params: { key: req.body.issue.fields!.assignee.key },
 					auth: {
 						username: config.oauthServer.clientId,
 						password: config.oauthServer.clientSecret,
 					},
 				}).catch((err) => {
-					logger.info(err.response.data);
-					throw new Error(err);
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+					encounteredError = true;
 				});
+				if (encounteredError) return;
+				const user = oauthUserRes!.data;
 
 				const previousAssignedUser = await UserInfo.findOne({
 					isAssigned: true,
@@ -499,7 +706,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					previousAssignedUser.assignedTo = undefined;
 					previousAssignedUser.lastAssigned = new Date();
 					previousAssignedUser.save((err) => {
-						if (err) logger.error(err);
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error saving user in db (${eventId})`);
+							logger.error(err);
+						}
 					});
 				}
 
@@ -510,7 +721,15 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					link.hasAssignment += (1 << 0);
 				}
 
-				let userDoc = await UserInfo.findById(user._id).exec();
+				let userDoc = await UserInfo.findById(user._id).exec()
+					.catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error finding user in db (${eventId})`);
+						logger.error(err);
+						encounteredError = true;
+					});
+				if (encounteredError) return;
+
 				if (!userDoc) {
 					userDoc = new UserInfo({
 						_id: user._id,
@@ -525,10 +744,18 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				link.lastUpdate = new Date();
 
 				userDoc.save((err) => {
-					if (err) logger.error(err);
+					if (err) {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error saving user in db (${eventId})`);
+						logger.error(err);
+					}
 				});
 				link.save((err) => {
-					if (err) logger.error(err);
+					if (err) {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error saving issue link (${eventId})`);
+						logger.error(err);
+					}
 				});
 
 				const embed = msg.embeds[0].spliceFields(1, 1, {
@@ -536,12 +763,23 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					value: `<@${user._id}>`,
 				} as any);
 
-				msg.edit({ embeds: [embed], components: [row] });
+				msg.edit({
+					embeds: [embed],
+					components: [row],
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while editing message in Discord user (${eventId})`);
+					logger.error(err);
+				});
 
 				client.users.fetch(user._id)
 					.then((fetchedUser) => {
 						sendUserAssignedEmbed(link, fetchedUser);
-					}).catch((err) => logger.error(err));
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching Discord user (${eventId})`);
+						logger.error(err);
+					});
 			}
 		} else if (transitionName === 'Assign LQC') {
 			const row = new MessageActionRow()
@@ -568,7 +806,14 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					value: 'Unassigned',
 					inline: true,
 				} as any);
-				msg.edit({ embeds: [embed], components: [row] });
+				await msg.edit({
+					embeds: [embed],
+					components: [row],
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while editing message in Discord user (${eventId})`);
+					logger.error(err);
+				});
 
 				if (link.hasAssignment & (1 << 1)) {
 					link.hasAssignment -= (1 << 1);
@@ -578,34 +823,49 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					}
 
 					link.save((err) => {
-						if (err) logger.error(err);
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error saving issue link (${eventId})`);
+							logger.error(err);
+						}
 					});
 
 					const user = await UserInfo.findOne({ assignedTo: link.jiraKey, assignedAs: 'lqc' }).exec()
 						.catch((err) => {
-							logger.log(err);
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error finding user in db (${eventId})`);
+							logger.error(err);
+							encounteredError = true;
 						});
-					if (!user) return;
+
+					if (encounteredError || !user) return;
 					user.isAssigned = false;
 					user.assignedAs = undefined;
 					user.assignedTo = undefined;
 					user.lastAssigned = new Date();
 
 					user.save((err) => {
-						if (err) logger.error(err);
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error saving user in db (${eventId})`);
+							logger.error(err);
+						}
 					});
 				}
 			} else {
-				const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
-					params: { key: req.body.issue.fields![config.jira.fields.LQCAssignee].key },
+				const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+					params: { key: req.body.issue.fields!.assignee.key },
 					auth: {
 						username: config.oauthServer.clientId,
 						password: config.oauthServer.clientSecret,
 					},
 				}).catch((err) => {
-					logger.error(err.response.data);
-					throw new Error(err);
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+					encounteredError = true;
 				});
+				if (encounteredError) return;
+				const user = oauthUserRes!.data;
 
 				const previousAssignedUser = await UserInfo.findOne({
 					isAssigned: true,
@@ -618,7 +878,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					previousAssignedUser.assignedTo = undefined;
 					previousAssignedUser.lastAssigned = new Date();
 					previousAssignedUser.save((err) => {
-						if (err) logger.error(err);
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving user in db (${eventId})`);
+							logger.error(err);
+						}
 					});
 				}
 
@@ -629,7 +893,22 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					link.hasAssignment += (1 << 1);
 				}
 
-				let userDoc = await UserInfo.findById(user._id).exec();
+				link.save((err) => {
+					if (err) {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while saving issue link (${eventId})`);
+						logger.error(err);
+					}
+				});
+
+				let userDoc = await UserInfo.findById(user._id).exec()
+					.catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching user from db (${eventId})`);
+						logger.error(err);
+						encounteredError = true;
+					});
+				if (encounteredError) return;
 				if (!userDoc) {
 					userDoc = new UserInfo({
 						_id: user._id,
@@ -643,11 +922,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				userDoc.updateRequestCount = 0;
 
 				userDoc.save((err) => {
-					if (err) logger.error(err);
-				});
-
-				link.save((err) => {
-					if (err) logger.error(err);
+					if (err) {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while saving user in db (${eventId})`);
+						logger.error(err);
+					}
 				});
 
 				const embed = msg.embeds[0].spliceFields(1, 1, {
@@ -655,11 +934,25 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					value: `<@${user._id}>`,
 					inline: true,
 				} as any);
-				msg.edit({ embeds: [embed], components: [row] });
+
+				await msg.edit({
+					embeds: [embed],
+					components: [row],
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while editing message in Discord user (${eventId})`);
+					logger.error(err);
+				});
+
 				client.users.fetch(user._id)
 					.then((fetchedUser) => {
 						sendUserAssignedEmbed(link, fetchedUser);
-					}).catch((err) => logger.error(err));
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching user on Discord (${eventId})`);
+						logger.error(err);
+						encounteredError = true;
+					});
 			}
 		} else if (transitionName === 'Assign SubQC') {
 			const row = new MessageActionRow()
@@ -687,7 +980,15 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					value: 'Unassigned',
 					inline: true,
 				} as any);
-				msg.edit({ embeds: [embed], components: [row] });
+
+				await msg.edit({
+					embeds: [embed],
+					components: [row],
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while editing message in Discord user (${eventId})`);
+					logger.error(err);
+				});
 
 				if (link.hasAssignment & (1 << 2)) {
 					link.hasAssignment -= (1 << 2);
@@ -696,34 +997,49 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						link.inProgress -= (1 << 2);
 					}
 					link.save((err) => {
-						if (err) logger.error(err);
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error saving issue link (${eventId})`);
+							logger.error(err);
+						}
 					});
 
 					const user = await UserInfo.findOne({ assignedTo: link.jiraKey, assignedAs: 'sqc' }).exec()
 						.catch((err) => {
-							logger.log(err);
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error finding user in db (${eventId})`);
+							logger.error(err);
+							encounteredError = true;
 						});
-					if (!user) return;
+
+					if (encounteredError || !user) return;
 					user.isAssigned = false;
 					user.assignedAs = undefined;
 					user.assignedTo = undefined;
 					user.lastAssigned = new Date();
 
 					user.save((err) => {
-						if (err) logger.error(err);
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error saving user in db (${eventId})`);
+							logger.error(err);
+						}
 					});
 				}
 			} else {
-				const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+				const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
 					params: { key: req.body.issue.fields![config.jira.fields.SubQCAssignee].key },
 					auth: {
 						username: config.oauthServer.clientId,
 						password: config.oauthServer.clientSecret,
 					},
 				}).catch((err) => {
-					logger.log(err.response.data);
-					throw new Error(err);
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+					encounteredError = true;
 				});
+				if (encounteredError) return;
+				const user = oauthUserRes!.data;
 
 				const previousAssignedUser = await UserInfo.findOne({
 					isAssigned: true,
@@ -736,7 +1052,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					previousAssignedUser.assignedTo = undefined;
 					previousAssignedUser.lastAssigned = new Date();
 					previousAssignedUser.save((err) => {
-						if (err) logger.error(err);
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving user in db (${eventId})`);
+							logger.error(err);
+						}
 					});
 				}
 
@@ -747,7 +1067,23 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					link.hasAssignment += (1 << 2);
 				}
 
-				let userDoc = await UserInfo.findById(user._id).exec();
+				link.save((err) => {
+					if (err) {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while saving issue link (${eventId})`);
+						logger.error(err);
+					}
+				});
+
+				let userDoc = await UserInfo.findById(user._id).exec()
+					.catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching user from db (${eventId})`);
+						logger.error(err);
+						encounteredError = true;
+					});
+				if (encounteredError) return;
+
 				if (!userDoc) {
 					userDoc = new UserInfo({
 						_id: user._id,
@@ -761,10 +1097,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				userDoc.updateRequestCount = 0;
 
 				userDoc.save((err) => {
-					if (err) logger.error(err);
-				});
-				link.save((err) => {
-					if (err) logger.error(err);
+					if (err) {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while saving user in db (${eventId})`);
+						logger.error(err);
+					}
 				});
 
 				const embed = msg.embeds[0].spliceFields(2, 1, {
@@ -772,18 +1109,35 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					value: `<@${user._id}>`,
 					inline: true,
 				} as any);
-				msg.edit({ embeds: [embed], components: [row] });
+
+				await msg.edit({
+					embeds: [embed],
+					components: [row],
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while editing message in Discord user (${eventId})`);
+					logger.error(err);
+				});
 
 				client.users.fetch(user._id)
 					.then((fetchedUser) => {
 						sendUserAssignedEmbed(link, fetchedUser);
-					}).catch((err) => logger.error(err));
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching user on Discord (${eventId})`);
+						logger.error(err);
+						encounteredError = true;
+					});
 			}
 		} else {
 			// eslint-disable-next-line max-len
 			link.languages = req.body.issue.fields![config.jira.fields.langs].map((language: JiraField) => language.value);
 			link.save((err) => {
-				if (err) logger.error(err);
+				if (err) {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while saving issue link (${eventId})`);
+					logger.error(err);
+				}
 			});
 
 			const row = new MessageActionRow()
@@ -844,9 +1198,13 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
 						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
 
-					msg.edit({
+					await msg.edit({
 						embeds: [embed],
 						components: [newRow],
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while editing message in Discord user (${eventId})`);
+						logger.error(err);
 					});
 				} else {
 					const embed = new MessageEmbed()
@@ -859,9 +1217,13 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
 						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
 
-					msg.edit({
+					await msg.edit({
 						embeds: [embed],
 						components: [row],
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while editing message in Discord user (${eventId})`);
+						logger.error(err);
 					});
 				}
 			} else {
@@ -874,7 +1236,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					user.assignedAs = undefined;
 					user.assignedTo = undefined;
 					user.save((err) => {
-						if (err) logger.error(err);
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving user in db (${eventId})`);
+							logger.error(err);
+						}
 					});
 					/* eslint-enable */
 				});
@@ -882,28 +1248,43 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				// eslint-disable-next-line max-len
 				const newStatusLink = await StatusLink.findById(req.body.issue.fields!.status.name).lean().exec()
 					.catch((err) => {
-						throw err;
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching status link (${eventId})`);
+						logger.error(err);
+						encounteredError = true;
 					});
+				if (encounteredError) return;
 
 				if (!newStatusLink) {
 					logger.warn(`No channel link found for: ${req.body.issue.fields!.status.name}`);
 					link.discordMessageId = undefined;
-					link.status = req.body.issue.fields!.status.name;
+					link.status = req.body.issue.fields!.status.name!;
 					link.lastUpdate = new Date();
 					link.hasAssignment = 0;
 
-					await link.save((err) => {
-						if (err) logger.error(err);
+					link.save((err) => {
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving issue link (${eventId})`);
+							logger.error(err);
+						}
 					});
 					return;
 				}
 
 				const newChannel = await client.channels.fetch(newStatusLink.channel)
 					.catch((err) => {
-						throw new Error(err);
-					}) as unknown as BaseGuildTextChannel | null;
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching Discord channel (${eventId})`);
+						logger.error(err);
+						encounteredError = true;
+					}) as TextChannel | null;
+				if (encounteredError) return;
 
-				if (newChannel?.type !== 'GUILD_TEXT') throw new Error(`Channel: ${newStatusLink.channel} is not a guild text channel`);
+				if (newChannel?.type !== 'GUILD_TEXT') {
+					logger.error(`Channel: ${newStatusLink.channel} is not a guild text channel`);
+					return;
+				}
 
 				if (req.body.issue.fields!.status.name === 'Sub QC/Language QC') {
 					const newRow = new MessageActionRow()
@@ -939,9 +1320,13 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					const newMsg = await newChannel.send({
 						embeds: [embed],
 						components: [newRow],
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while sending message (${eventId})`);
+						logger.error(err);
 					});
 
-					link.discordMessageId = newMsg.id;
+					link.discordMessageId = newMsg?.id ?? undefined;
 					link.status = req.body.issue.fields!.status.name;
 					link.lastUpdate = new Date();
 					link.progressStart = undefined;
@@ -950,11 +1335,20 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					link.hasAssignment = 0;
 					link.inProgress = 0;
 
-					await link.save((err) => {
-						if (err) logger.error(err);
+					link.save((err) => {
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error saving issue link (${eventId})`);
+							logger.error(err);
+						}
 					});
 
-					msg.delete();
+					await msg.delete()
+						.catch((err) => {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while deleting message (${eventId})`);
+							logger.error(err);
+						});
 				} else if (req.body.issue.fields!.status.name === 'Ready for release') {
 					const embed = new MessageEmbed()
 						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields!.summary}`)
@@ -967,33 +1361,48 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					const newMsg = await newChannel.send({
 						content: 'New project ready for release',
 						embeds: [embed],
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while sending message (${eventId})`);
+						logger.error(err);
 					});
 
-					link.discordMessageId = newMsg.id;
+					link.discordMessageId = newMsg?.id ?? undefined;
 					link.status = req.body.issue.fields!.status.name;
 					link.lastUpdate = new Date();
 					link.hasAssignment = 0;
 
-					await link.save((err) => {
-						if (err) logger.error(err);
+					link.save((err) => {
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error saving issue link (${eventId})`);
+							logger.error(err);
+						}
 					});
 
-					msg.delete();
+					await msg.delete()
+						.catch((err) => {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while deleting message (${eventId})`);
+							logger.error(err);
+						});
 				} else {
 					let user: any | undefined;
 					if (req.body.issue.fields!.assignee !== null) {
-						const { data } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+						link.hasAssignment = (1 << 0);
+
+						const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
 							params: { key: req.body.issue.fields!.assignee.key },
 							auth: {
 								username: config.oauthServer.clientId,
 								password: config.oauthServer.clientSecret,
 							},
 						}).catch((err) => {
-							logger.error(err.response.data);
-							throw new Error(err);
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+							encounteredError = true;
 						});
-						user = data;
-						link.hasAssignment = (1 << 0);
+						if (!encounteredError) user = oauthUserRes!.data;
 					} else {
 						link.hasAssignment = 0;
 					}
@@ -1002,7 +1411,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields!.summary}`)
 						.setColor('#0052cc')
 						.setDescription(req.body.issue.fields!.description ?? 'No description available')
-						.addField('Status', req.body.issue.fields!.status.name)
+						.addField('Status', req.body.issue.fields!.status.name!)
 						.addField('Assignee', user ? `<@${user._id}>` : 'Unassigned')
 						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
 						.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
@@ -1011,17 +1420,30 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					const newMsg = await newChannel.send({
 						embeds: [embed],
 						components: [row],
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while sending message to Discord user (${eventId})`);
+						logger.error(err);
 					});
 
-					link.discordMessageId = newMsg.id;
-					link.status = req.body.issue.fields!.status.name;
+					link.discordMessageId = newMsg?.id ?? undefined;
+					link.status = req.body.issue.fields!.status.name!;
 					link.lastUpdate = new Date();
 
-					await link.save((err) => {
-						if (err) logger.error(err);
+					link.save((err) => {
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving issue link (${eventId})`);
+							logger.error(err);
+						}
 					});
 
-					msg.delete();
+					await msg.delete()
+						.catch((err) => {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while deleting message (${eventId})`);
+							logger.error(err);
+						});
 				}
 			}
 		}

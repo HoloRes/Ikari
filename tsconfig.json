@@ -2,7 +2,10 @@
     "compilerOptions": {
         "outDir": "./dist",
         "typeRoots": ["./node_modules/@types", "./src/custom_typings"],
-        "resolveJsonModule": true
+        "resolveJsonModule": true,
+        "sourceMap": true,
+        "inlineSources": true,
+        "sourceRoot": "/"
     },
     "include": [
         "./src/**/*"

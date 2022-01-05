@@ -79,7 +79,7 @@ if (config.logTransports?.loki) {
 if (config.logTransports?.discord) {
 	logger.add(new SlackTransport({
 		webhookUrl: config.logTransports.discord.url,
-		level: config.logTransports.discord.level ?? 'info',
+		level: config.logTransports.discord.level ?? 'error',
 	}));
 }
 

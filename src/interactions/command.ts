@@ -1,6 +1,8 @@
 import axios, { AxiosResponse } from 'axios';
 import Discord, { MessageEmbed } from 'discord.js';
-import { components as JiraComponents } from '../types/jira';
+import { Version2Models } from 'jira.js';
+import Sentry from '@sentry/node';
+import format from 'string-template';
 import { jiraClient, logger } from '../index';
 import Setting from '../models/Setting';
 import { allServicesOnline } from '../lib/middleware';
@@ -49,8 +51,9 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 			issue = await jiraClient.issues.getIssue({ issueIdOrKey: key });
 		} catch (err: any) {
 			if (err.response && err.response.status !== 404) {
-				logger.error(err.response.body);
-				await interaction.editReply('Something went wrong, please try again later.');
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching Jira issue (${eventId})`);
+				await interaction.editReply(format(strings.unknownError, { eventId }));
 				return;
 			}
 		}
@@ -68,22 +71,24 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 				_id: string;
 			};
 
-			const { data: userData } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+			const res = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
 				params: { key: issue.fields!.assignee.key },
 				auth: {
 					username: config.oauthServer.clientId,
 					password: config.oauthServer.clientSecret,
 				},
 			}).catch(async (err) => {
-				logger.info(err.response.data);
-				await interaction.editReply('Something went wrong, please try again later.');
-				throw new Error(err);
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+				await interaction.editReply(format(strings.unknownError, { eventId }));
 			}) as AxiosResponse<UserLink>;
-			user = `<@${userData._id}`;
+			if (!res) return;
+
+			user = `<@${res.data._id}`;
 		}
 
 		// eslint-disable-next-line no-return-assign
-		issue.fields![config.jira.fields.langs].map((language: JiraComponents['schemas']['CustomFieldOption']) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
+		issue.fields![config.jira.fields.langs].map((language: Version2Models.CustomFieldOption) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
 
 		let timestamps = issue.fields![config.jira.fields.timestamps];
 		if (issue.fields![config.jira.fields.timestamps].split(',').length > 3) {
@@ -107,18 +112,19 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 					_id: string;
 				};
 
-				const { data: userData } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+				const res = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
 					params: { key: issue.fields![config.jira.fields.LQCAssignee].key },
 					auth: {
 						username: config.oauthServer.clientId,
 						password: config.oauthServer.clientSecret,
 					},
 				}).catch(async (err) => {
-					logger.info(err.response.data);
-					await interaction.editReply('Something went wrong, please try again later.');
-					throw new Error(err);
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching Jira issue (${eventId})`);
+					await interaction.editReply(format(strings.unknownError, { eventId }));
 				}) as AxiosResponse<UserLink>;
-				LQCAssignee = `<@${userData._id}>`;
+				if (!res) return;
+				LQCAssignee = `<@${res.data._id}>`;
 			}
 
 			if (issue.fields![config.jira.fields.SubQCAssignee]) {
@@ -126,21 +132,20 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 					_id: string;
 				};
 
-				const { data: userData } = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+				const res = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
 					params: { key: issue.fields![config.jira.fields.SubQCAssignee].key },
 					auth: {
 						username: config.oauthServer.clientId,
 						password: config.oauthServer.clientSecret,
 					},
 				}).catch(async (err) => {
-					logger.info(err.response.data);
-					await interaction.editReply('Something went wrong, please try again later.');
-					throw new Error(err);
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+					await interaction.editReply(format(strings.unknownError, { eventId }));
 				}) as AxiosResponse<UserLink>;
-				SubQCAssignee = `<@${userData._id}>`;
+				if (!res) return;
+				SubQCAssignee = `<@${res.data._id}>`;
 			}
-
-			logger.info((issue.fields![config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done'));
 
 			embed = new MessageEmbed()
 				.setTitle(issue.key!)
@@ -169,7 +174,7 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 				)
 				.addField('Source', `[link](${issue.fields![config.jira.fields.videoLink]})`)
 				.addField('Timestamp(s)', timestamps)
-				.setFooter(`Due date: ${issue.fields!.duedate || 'unknown'}`)
+				.setFooter({ text: `Due date: ${issue.fields!.duedate || 'unknown'}` })
 				.setURL(`${config.jira.url}/projects/${issue.fields!.project.key}/issues/${issue.key}`);
 		} else {
 			embed = new Discord.MessageEmbed()
@@ -180,7 +185,7 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 				.addField('Assignee', user)
 				.addField('Source', `[link](${issue.fields![config.jira.fields.videoLink]})`)
 				.addField('Timestamp(s)', timestamps)
-				.setFooter(`Due date: ${issue.fields!.duedate || 'unknown'}`)
+				.setFooter({ text: `Due date: ${issue.fields!.duedate || 'unknown'}` })
 				.setURL(`${config.jira.url}/projects/${issue.fields!.project.key}/issues/${issue.key}`);
 		}
 
@@ -205,7 +210,9 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 
 				await setting.save(async (err) => {
 					if (err) {
-						await interaction.editReply('Updating setting failed!');
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while saving setting (${eventId})`);
+						await interaction.editReply(format(strings.unknownError, { eventId }));
 					} else {
 						await interaction.editReply({ embeds: [embed] });
 					}
@@ -223,7 +230,9 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 
 				await newSetting.save(async (err) => {
 					if (err) {
-						await interaction.editReply('Creating setting failed!');
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while saving setting (${eventId})`);
+						await interaction.editReply(format(strings.unknownError, { eventId }));
 					} else {
 						await interaction.editReply({ embeds: [embed] });
 					}

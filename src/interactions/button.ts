@@ -2,6 +2,7 @@ import Discord from 'discord.js';
 import axios, { AxiosResponse } from 'axios';
 import format from 'string-template';
 import humanizeDuration from 'humanize-duration';
+import Sentry from '@sentry/node';
 import { jiraClient, logger } from '../index';
 import IdLink from '../models/IdLink';
 import UserInfo from '../models/UserInfo';
@@ -27,35 +28,56 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		await interaction.deferReply({ ephemeral: true });
 		const issueKey = interaction.customId.split(':')[1];
 
+		let encounteredError = false;
+
 		// Get jira info from the OAuth server
-		const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
+		const res = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
 			params: { id: interaction.user.id },
 			auth: {
 				username: config.oauthServer.clientId,
 				password: config.oauthServer.clientSecret,
 			},
 		}).catch((err) => {
-			logger.error(err.response.data);
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while user from OAuth (${eventId})`);
+			logger.error(err);
+			interaction.editReply(format(strings.assignmentFail, { eventId }));
+			encounteredError = true;
 		}) as AxiosResponse;
+		if (encounteredError) return;
+
+		const user = res.data;
 		if (!user) {
-			await interaction.editReply(strings.unknownError);
+			await interaction.editReply(format(strings.assignmentFail, { eventId: 'noDataInValidRes' }));
 			return;
 		}
 
 		// Update the project info in the db
 		const link = await IdLink.findOne({ discordMessageId: interaction.message.id }).lean().exec()
 			.catch((err: Error) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching project link (${eventId})`);
 				logger.error(err);
+				interaction.editReply(format(strings.assignmentFail, { eventId }));
+				encounteredError = true;
 			});
+		if (encounteredError) return;
+
 		if (!link) {
-			await interaction.editReply(strings.assignmentFail);
+			await interaction.editReply(format(strings.assignmentFail, { eventId: 'somehowNoIdLink' }));
 			return;
 		}
 
 		const member = await interaction.guild.members.fetch(interaction.user.id)
 			.catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching member on Discord (${eventId})`);
 				logger.error(err);
+				interaction.editReply(format(strings.assignmentFail, { eventId }));
+				encounteredError = true;
 			});
+		if (encounteredError) return;
+
 		if (!member) {
 			await interaction.editReply(strings.interactionMemberNotFound);
 			return;
@@ -67,14 +89,20 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				.then(() => resolve(true));
 		}) as boolean;
 		if (!updatedGroups) {
-			await interaction.editReply(strings.unknownError);
+			await interaction.editReply(format(strings.assignmentFail, { eventId: 'updateUserGroupsFail' }));
 			return;
 		}
 
 		const issue = await jiraClient.issues.getIssue({ issueIdOrKey: issueKey })
 			.catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching Jira issue (${eventId})`);
 				logger.error(err);
+				interaction.editReply(format(strings.assignmentFail, { eventId }));
+				encounteredError = true;
 			});
+		if (encounteredError) return;
+
 		if (!issue) {
 			await interaction.editReply(strings.assignmentFail);
 			return;
@@ -91,13 +119,15 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		// Check if the user can be assigned to the project at the current status
 		const valid = await checkValid(member, status, languages)
 			.catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error checking if user is valid (${eventId})`);
 				logger.error(err);
-				interaction.editReply(strings.assignmentFail);
+				interaction.editReply(format(strings.assignmentFail, { eventId }));
+				encounteredError = true;
 			});
+		if (encounteredError) return;
 
-		if (!valid) {
-			await interaction.editReply(strings.assignmentNotPossible);
-		} else {
+		if (valid) {
 			// Use Jira to assign, so the webhook gets triggered and handles the rest.
 			await jiraClient.issues.doTransition({
 				issueIdOrKey: issueKey,
@@ -112,24 +142,36 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			}).then(() => {
 				interaction.editReply(strings.assignmentSuccess);
 			}).catch((err) => {
-				logger.error(err);
-				interaction.editReply(strings.assignmentFail);
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error transitioning issue (${eventId})`);
+				interaction.editReply(format(strings.assignmentFail, { eventId }));
 			});
+		} else {
+			await interaction.editReply(strings.assignmentNotPossible);
 		}
 	} else if (interaction.customId.startsWith('assignLQCToMe:')) {
 		if (!interaction.guild) return;
 		await interaction.deferReply({ ephemeral: true });
 		const issueKey = interaction.customId.split(':')[1];
 
-		const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
+		let encounteredError = false;
+
+		const res = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
 			params: { id: interaction.user.id },
 			auth: {
 				username: config.oauthServer.clientId,
 				password: config.oauthServer.clientSecret,
 			},
 		}).catch((err) => {
-			logger.error(err.response.data);
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while user from OAuth (${eventId})`);
+			logger.error(err);
+			interaction.editReply(format(strings.assignmentFail, { eventId }));
+			encounteredError = true;
 		}) as AxiosResponse;
+		if (encounteredError) return;
+
+		const user = res.data;
 		if (!user) {
 			await interaction.editReply(strings.unknownError);
 			return;
@@ -137,19 +179,29 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 
 		const link = await IdLink.findOne({ discordMessageId: interaction.message.id }).lean().exec()
 			.catch((err: Error) => {
-				interaction.editReply(strings.assignmentFail);
-				throw err;
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching project link (${eventId})`);
+				logger.error(err);
+				interaction.editReply(format(strings.assignmentFail, { eventId }));
+				encounteredError = true;
 			});
+		if (encounteredError) return;
+
 		if (!link) {
-			await interaction.editReply(strings.assignmentFail);
+			await interaction.editReply(format(strings.assignmentFail, { eventId: 'somehowNoIdLink' }));
 			return;
 		}
 
 		const member = await interaction.guild.members.fetch(interaction.user.id)
 			.catch((err) => {
-				interaction.editReply(strings.assignmentFail);
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching member on Discord (${eventId})`);
 				logger.error(err);
+				interaction.editReply(format(strings.assignmentFail, { eventId }));
+				encounteredError = true;
 			});
+		if (encounteredError) return;
+
 		if (!member) {
 			await interaction.editReply(strings.interactionMemberNotFound);
 			return;
@@ -161,14 +213,20 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				.then(() => resolve(true));
 		}) as boolean;
 		if (!updatedGroups) {
-			await interaction.editReply(strings.unknownError);
+			await interaction.editReply(format(strings.assignmentFail, { eventId: 'updateUserGroupsFail' }));
 			return;
 		}
 
 		const issue = await jiraClient.issues.getIssue({ issueIdOrKey: issueKey })
 			.catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching Jira issue (${eventId})`);
 				logger.error(err);
+				interaction.editReply(format(strings.assignmentFail, { eventId }));
+				encounteredError = true;
 			});
+		if (encounteredError) return;
+
 		if (!issue) {
 			await interaction.editReply(strings.assignmentFail);
 			return;
@@ -183,9 +241,13 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 
 		const valid = await checkValid(member, 'Sub QC/Language QC', languages, 'lqc')
 			.catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error checking if user is valid (${eventId})`);
 				logger.error(err);
-				interaction.editReply(strings.assignmentFail);
+				interaction.editReply(format(strings.assignmentFail, { eventId }));
+				encounteredError = true;
 			});
+		if (encounteredError) return;
 
 		if (valid) {
 			await jiraClient.issues.doTransition({
@@ -198,11 +260,12 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				transition: {
 					id: config.jira.transitions['Assign LQC'],
 				},
-			}).then(async () => {
-				await interaction.editReply(strings.assignmentSuccess);
+			}).then(() => {
+				interaction.editReply(strings.assignmentSuccess);
 			}).catch((err) => {
-				logger.error(err);
-				interaction.editReply(strings.assignmentFail);
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error transitioning issue (${eventId})`);
+				interaction.editReply(format(strings.assignmentFail, { eventId }));
 			});
 		} else {
 			await interaction.editReply(strings.assignmentNotPossible);
@@ -212,15 +275,24 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		await interaction.deferReply({ ephemeral: true });
 		const issueKey = interaction.customId.split(':')[1];
 
-		const { data: user } = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
+		let encounteredError = false;
+
+		const res = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
 			params: { id: interaction.user.id },
 			auth: {
 				username: config.oauthServer.clientId,
 				password: config.oauthServer.clientSecret,
 			},
 		}).catch((err) => {
-			logger.error(err.response.data);
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while user from OAuth (${eventId})`);
+			logger.error(err);
+			interaction.editReply(format(strings.assignmentFail, { eventId }));
+			encounteredError = true;
 		}) as AxiosResponse;
+		if (encounteredError) return;
+
+		const user = res.data;
 		if (!user) {
 			await interaction.editReply(strings.unknownError);
 			return;
@@ -228,18 +300,29 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 
 		const link = await IdLink.findOne({ discordMessageId: interaction.message.id }).lean().exec()
 			.catch((err: Error) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching project link (${eventId})`);
 				logger.error(err);
+				interaction.editReply(format(strings.assignmentFail, { eventId }));
+				encounteredError = true;
 			});
+		if (encounteredError) return;
+
 		if (!link) {
-			await interaction.editReply(strings.assignmentFail);
+			await interaction.editReply(format(strings.assignmentFail, { eventId: 'somehowNoIdLink' }));
 			return;
 		}
 
 		const member = await interaction.guild.members.fetch(interaction.user.id)
 			.catch((err) => {
-				interaction.editReply(strings.assignmentFail);
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching member on Discord (${eventId})`);
 				logger.error(err);
+				interaction.editReply(format(strings.assignmentFail, { eventId }));
+				encounteredError = true;
 			});
+		if (encounteredError) return;
+
 		if (!member) {
 			await interaction.editReply(strings.interactionMemberNotFound);
 			return;
@@ -251,15 +334,19 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				.then(() => resolve(true));
 		}) as boolean;
 		if (!updatedGroups) {
-			await interaction.editReply(strings.unknownError);
+			await interaction.editReply(format(strings.assignmentFail, { eventId: 'updateUserGroupsFail' }));
 			return;
 		}
 
 		const valid = await checkValid(member, 'Sub QC/Language QC', [], 'sqc')
 			.catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error checking if user is valid (${eventId})`);
 				logger.error(err);
-				interaction.editReply(strings.assignmentFail);
+				interaction.editReply(format(strings.assignmentFail, { eventId }));
+				encounteredError = true;
 			});
+		if (encounteredError) return;
 
 		if (valid) {
 			await jiraClient.issues.doTransition({
@@ -275,8 +362,9 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			}).then(() => {
 				interaction.editReply(strings.assignmentSuccess);
 			}).catch((err) => {
-				logger.error(err);
-				interaction.editReply(strings.assignmentFail);
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error transitioning issue (${eventId})`);
+				interaction.editReply(format(strings.assignmentFail, { eventId }));
 			});
 		} else {
 			await interaction.editReply(strings.assignmentNotPossible);
@@ -287,12 +375,20 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		const jiraKey = interaction.customId.split(':')[1];
 		const maxTimeTaken = await Setting.findById('maxTimeTaken').lean().exec();
 
+		let encounteredError = false;
+
 		const user = await UserInfo.findById(interaction.user.id).exec()
 			.catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching user from db (${eventId})`);
 				logger.error(err);
+				interaction.editReply(format(strings.unknownError, { eventId }));
+				encounteredError = true;
 			});
+		if (encounteredError) return;
+
 		if (!user) {
-			await interaction.editReply(strings.unknownError);
+			await interaction.editReply(format(strings.unknownError, { eventId: 'somehowNoUserDoc' }));
 			return;
 		}
 		if (user.assignedTo !== jiraKey) {
@@ -300,7 +396,15 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			return;
 		}
 
-		const project = await IdLink.findOne({ jiraKey }).exec();
+		const project = await IdLink.findOne({ jiraKey }).exec()
+			.catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching id link (${eventId})`);
+				logger.error(err);
+				interaction.editReply(format(strings.unknownError, { eventId }));
+				encounteredError = true;
+			});
+		if (encounteredError) return;
 		if (!project) {
 			await interaction.editReply(strings.unknownError);
 			return;
@@ -316,8 +420,10 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				project.inProgress += (1 << 1);
 				project.save(async (err) => {
 					if (err) {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while saving id link (${eventId})`);
 						logger.error(err);
-						await interaction.editReply(strings.unknownError);
+						await interaction.editReply(format(strings.unknownError, { eventId }));
 						return;
 					}
 					await interaction.editReply(format(strings.updateReceivedFromUser, {
@@ -340,8 +446,10 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				project.inProgress += (1 << 2);
 				project.save(async (err) => {
 					if (err) {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while saving id link (${eventId})`);
 						logger.error(err);
-						await interaction.editReply(strings.unknownError);
+						await interaction.editReply(format(strings.unknownError, { eventId }));
 						return;
 					}
 					await interaction.editReply(format(strings.updateReceivedFromUser, {
@@ -365,8 +473,10 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			project.inProgress += (1 << 0);
 			project.save(async (err) => {
 				if (err) {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while saving id link (${eventId})`);
 					logger.error(err);
-					await interaction.editReply(strings.unknownError);
+					await interaction.editReply(format(strings.unknownError, { eventId }));
 					return;
 				}
 				await interaction.editReply(format(strings.updateReceivedFromUser, {
@@ -386,12 +496,20 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 
 		const jiraKey = interaction.customId.split(':')[1];
 
+		let encounteredError = false;
+
 		const user = await UserInfo.findById(interaction.user.id).exec()
 			.catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching user from db (${eventId})`);
 				logger.error(err);
+				interaction.editReply(format(strings.unknownError, { eventId }));
+				encounteredError = true;
 			});
+		if (encounteredError) return;
+
 		if (!user) {
-			await interaction.editReply(strings.unknownError);
+			await interaction.editReply(format(strings.unknownError, { eventId: 'somehowNoUserDoc' }));
 			return;
 		}
 
@@ -400,9 +518,18 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			return;
 		}
 
-		const project = await IdLink.findOne({ jiraKey }).exec();
+		const project = await IdLink.findOne({ jiraKey }).exec()
+			.catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching id link (${eventId})`);
+				logger.error(err);
+				interaction.editReply(format(strings.unknownError, { eventId }));
+				encounteredError = true;
+			});
+		if (encounteredError) return;
+
 		if (!project) {
-			await interaction.editReply(strings.unknownError);
+			await interaction.editReply(format(strings.unknownError, { eventId: 'somehowNoProjectDoc' }));
 			return;
 		}
 
@@ -419,7 +546,13 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				});
 
 				project.staleCount += 1;
-				await project.save();
+				project.save((err) => {
+					if (err) {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while saving id link (${eventId})`);
+						interaction.editReply(format(strings.unknownError, { eventId }));
+					}
+				});
 
 				await interaction.editReply(format(strings.projectAbandoned, { jiraKey }));
 			} else if (user.assignedAs === 'sqc') {
@@ -435,8 +568,9 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 					project.staleCount += 1;
 					project.save((err) => {
 						if (err) {
-							logger.error(err);
-							interaction.editReply(strings.unknownError);
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving id link (${eventId})`);
+							interaction.editReply(format(strings.unknownError, { eventId }));
 							return;
 						}
 						interaction.editReply(format(strings.projectAbandoned, { jiraKey }));
@@ -452,17 +586,30 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				transition: {
 					id: config.jira.transitions.Assign,
 				},
+			}).catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error transitioning issue (${eventId})`);
+				interaction.editReply(format(strings.unknownError, { eventId }));
 			});
 
 			project.staleCount += 1;
-			await project.save();
+			project.save((err) => {
+				if (err) {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while saving id link (${eventId})`);
+					logger.error(err);
+					interaction.editReply(format(strings.unknownError, { eventId }));
+				}
+			});
 
 			await interaction.editReply(format(strings.projectAbandoned, { jiraKey }));
 		}
 	} else if (interaction.customId.startsWith('teamLead:')) {
 		if (!interaction.guild) return;
-
 		await interaction.deferReply();
+
+		let encounteredError = false;
+
 		const teamLeadRole = await GroupLink.findOne({ jiraName: 'Team Lead' }).lean().exec();
 		if (!teamLeadRole) {
 			await interaction.editReply('No team lead role found, please report this.');
@@ -470,8 +617,14 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		}
 		const member = await interaction.guild.members.fetch(interaction.user.id)
 			.catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching user on Discord (${eventId})`);
 				logger.error(err);
+				interaction.editReply(format(strings.unknownError, { eventId }));
+				encounteredError = true;
 			});
+		if (encounteredError) return;
+
 		if (!member) {
 			await interaction.editReply(strings.interactionMemberNotFound);
 			return;
@@ -493,8 +646,9 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			}).then(() => {
 				interaction.editReply('Abandoned project, this is irreversible!');
 			}).catch((err) => {
-				logger.error(err);
-				interaction.editReply(strings.unknownError);
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error transitioning issue (${eventId})`);
+				interaction.editReply(format(strings.unknownError, { eventId }));
 			});
 		} else if (command.startsWith('unassign:')) {
 			const issueKey = command.split(':')[1];
@@ -510,8 +664,9 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			}).then(() => {
 				interaction.editReply('Unassigned project');
 			}).catch((err) => {
-				logger.error(err);
-				interaction.editReply(strings.unknownError);
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error transitioning issue (${eventId})`);
+				interaction.editReply(format(strings.assignmentFail, { eventId }));
 			});
 		} else if (command.startsWith('unassign-lqc:')) {
 			const issueKey = command.split(':')[1];
@@ -527,8 +682,9 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			}).then(async () => {
 				await interaction.editReply(strings.assignmentSuccess);
 			}).catch((err) => {
-				logger.error(err);
-				interaction.editReply(strings.assignmentFail);
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error transitioning issue (${eventId})`);
+				interaction.editReply(format(strings.assignmentFail, { eventId }));
 			});
 		} else if (command.startsWith('unassign-sqc:')) {
 			const issueKey = command.split(':')[1];
@@ -544,8 +700,9 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			}).then(async () => {
 				await interaction.editReply(strings.assignmentSuccess);
 			}).catch((err) => {
-				logger.error(err);
-				interaction.editReply(strings.assignmentFail);
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error transitioning issue (${eventId})`);
+				interaction.editReply(format(strings.assignmentFail, { eventId }));
 			});
 		}
 	}
