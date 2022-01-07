@@ -6,8 +6,9 @@ import {
 import axios from 'axios';
 import Sentry from '@sentry/node';
 import { Version2Models } from 'jira.js';
+import { Document } from 'mongoose';
 import { logger, client, jiraClient } from './index';
-import IdLink from './models/IdLink';
+import IdLink, { Project } from './models/IdLink';
 import StatusLink from './models/StatusLink';
 import UserInfo from './models/UserInfo';
 import sendUserAssignedEmbed from './lib/sendUserAssignedEmbed';
@@ -47,7 +48,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 		logger.verbose('New Jira issue webhook triggered');
 
 		let encounteredError = false;
-		const channelLink = await StatusLink.findById(req.body.issue.fields!.status.name).lean().exec()
+		const channelLink = await StatusLink.findById(req.body.issue.fields.status.name).lean().exec()
 			.catch((err) => {
 				const eventId = Sentry.captureException(err);
 				logger.error(`Encountered error while finding channel link (${eventId})`);
@@ -57,7 +58,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 		if (encounteredError) return;
 
 		if (!channelLink) {
-			logger.warn(`No channel link for ${req.body.issue.fields!.status.name} found!`);
+			logger.warn(`No channel link for ${req.body.issue.fields.status.name} found!`);
 			return;
 		}
 
@@ -78,9 +79,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 		const link = new IdLink({
 			jiraKey: req.body.issue.key,
 			type: 'translation',
-			status: req.body.issue.fields!.status.name,
+			status: req.body.issue.fields.status.name,
 			// eslint-disable-next-line max-len
-			languages: req.body.issue.fields![config.jira.fields.langs].map((language: JiraField) => language.value),
+			languages: req.body.issue.fields[config.jira.fields.langs].map((language: JiraField) => language.value),
 			lastUpdate: new Date(),
 			lastStatusChange: new Date(),
 		});
@@ -88,11 +89,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 		const embed = new MessageEmbed()
 			.setTitle(`${req.body.issue.key}`)
 			.setColor('#0052cc')
-			.setDescription(req.body.issue.fields!.summary ?? 'No description available')
-			.addField('Status', req.body.issue.fields!.status.name!)
-			.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-			.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
-			.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
+			.setDescription(req.body.issue.fields.summary ?? 'No description available')
+			.addField('Status', req.body.issue.fields.status.name!)
+			.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
+			.setFooter({ text: `Due date: ${req.body.issue.fields.duedate || 'unknown'}` })
+			.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
 
 		const msg = await channel.send({ content: 'A new project is available and can be picked up in Jira', embeds: [embed] })
 			.catch((err) => {
@@ -114,19 +115,32 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 	} else {
 		let encounteredError = false;
 		// Get the project from the db
-		const link = await IdLink.findOne({ jiraKey: req.body.issue.key })
+		let link = await IdLink.findOne({ jiraKey: req.body.issue.key })
 			.exec()
 			.catch((err) => {
 				const eventId = Sentry.captureException(err);
 				logger.error(`Encountered error while finding issue link (${eventId})`);
 				logger.error(err);
 				encounteredError = true;
-			});
+				/*
+				  Yes, this can be void, but we fix that with the below if statement.
+				  This type conversion is only here to prevent TS errors for
+				  this possibly being undefined, while it isn't
+				*/
+			}) as Document<any, any, Project> & Project;
 		if (encounteredError) return;
 
 		if (!link) {
 			// eslint-disable-next-line max-len
-			// TODO: For prod, create a link if it doesn't exist, expect Ikari to be offline/crashed in those cases.
+			link = new IdLink({
+				jiraKey: req.body.issue.key,
+				type: 'translation',
+				status: req.body.issue.fields.status.name,
+				// eslint-disable-next-line max-len
+				languages: req.body.issue.fields[config.jira.fields.langs].map((language: JiraField) => language.value),
+				lastUpdate: new Date(),
+				lastStatusChange: new Date(),
+			});
 			return;
 		}
 
@@ -143,7 +157,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 		const transitionName = req.body.transition?.transitionName;
 
-		if (req.body.issue.fields!.status.name === 'Open') {
+		if (req.body.issue.fields.status.name === 'Open') {
 			if (link.discordMessageId && statusLink) {
 				const channel = await client.channels.fetch(statusLink.channel)
 					.catch((err) => {
@@ -176,7 +190,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					});
 			} else if (link.discordMessageId) {
 				// eslint-disable-next-line max-len
-				const channelLink = await StatusLink.findById(req.body.issue.fields!.status.name).lean().exec()
+				const channelLink = await StatusLink.findById(req.body.issue.fields.status.name).lean().exec()
 					.catch((err) => {
 						const eventId = Sentry.captureException(err);
 						logger.error(`Encountered error while fetching channel link (${eventId})`);
@@ -186,7 +200,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				if (encounteredError) return;
 
 				if (!channelLink) {
-					logger.warn(`No channel link for ${req.body.issue.fields!.status.name} found!`);
+					logger.warn(`No channel link for ${req.body.issue.fields.status.name} found!`);
 					return;
 				}
 
@@ -222,7 +236,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			}
 
 			// eslint-disable-next-line max-len
-			const channelLink = await StatusLink.findById(req.body.issue.fields!.status.name).lean().exec()
+			const channelLink = await StatusLink.findById(req.body.issue.fields.status.name).lean().exec()
 				.catch((err) => {
 					const eventId = Sentry.captureException(err);
 					logger.error(`Encountered error while fetching channel link (${eventId})`);
@@ -232,7 +246,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			if (encounteredError) return;
 
 			if (!channelLink) {
-				logger.warn(`No channel link for ${req.body.issue.fields!.status.name} found!`);
+				logger.warn(`No channel link for ${req.body.issue.fields.status.name} found!`);
 				return;
 			}
 
@@ -253,11 +267,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			const embed = new MessageEmbed()
 				.setTitle(`${req.body.issue.key}`)
 				.setColor('#0052cc')
-				.setDescription(req.body.issue.fields!.summary ?? 'No description available')
-				.addField('Status', req.body.issue.fields!.status.name)
-				.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-				.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
-				.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
+				.setDescription(req.body.issue.fields.summary ?? 'No description available')
+				.addField('Status', req.body.issue.fields.status.name)
+				.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
+				.setFooter({ text: `Due date: ${req.body.issue.fields.duedate || 'unknown'}` })
+				.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
 
 			const msg = await channel.send({ content: 'A new project is available and can be picked up in Jira', embeds: [embed] })
 				.catch((err) => {
@@ -269,7 +283,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			if (encounteredError) return;
 
 			link.discordMessageId = msg!.id;
-			link.status = req.body.issue.fields!.status.name;
+			link.status = req.body.issue.fields.status.name;
 			link.save((err) => {
 				if (err) {
 					const eventId = Sentry.captureException(err);
@@ -355,11 +369,10 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 		}
 
 		// If the status doesn't have a Discord channel linked to it or the project has no message
-		if (!statusLink || !link.discordMessageId) {
+		if (!statusLink) {
 			logger.verbose(`No link found for: ${link.status}`);
-			// TODO: cleanup
 			// Only do something with the project if there's a status change
-			if (req.body.issue.fields!.status.name !== link.status) {
+			if (req.body.issue.fields.status.name !== link.status) {
 				const row = new MessageActionRow()
 					.addComponents(
 						new MessageButton()
@@ -367,7 +380,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 							.setLabel('Assign to me')
 							.setStyle('SUCCESS')
 							.setEmoji('819518919739965490')
-							.setDisabled(req.body.issue.fields!.assignee !== null),
+							.setDisabled(req.body.issue.fields.assignee !== null),
 					);
 
 				// Un-assign all users who were assigned in the previous status
@@ -389,9 +402,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				});
 
 				// If the new status is uploaded, we only need to update the document in the db
-				if (req.body.issue.fields!.status.name === 'Uploaded') {
+				if (req.body.issue.fields.status.name === 'Uploaded') {
 					link.discordMessageId = undefined;
-					link.status = req.body.issue.fields!.status.name;
+					link.status = req.body.issue.fields.status.name;
 					link.lastUpdate = new Date();
 					link.hasAssignment = 0;
 					link.finished = true;
@@ -407,7 +420,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				}
 
 				// eslint-disable-next-line max-len
-				const newStatusLink = await StatusLink.findById(req.body.issue.fields!.status.name).lean().exec()
+				const newStatusLink = await StatusLink.findById(req.body.issue.fields.status.name).lean().exec()
 					.catch((err) => {
 						const eventId = Sentry.captureException(err);
 						logger.error(`Encountered error while fetching status link (${eventId})`);
@@ -417,9 +430,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				if (encounteredError) return;
 
 				if (!newStatusLink) {
-					logger.warn(`No channel link found for: ${req.body.issue.fields!.status.name!}`);
+					logger.warn(`No channel link found for: ${req.body.issue.fields.status.name!}`);
 					link.discordMessageId = undefined;
-					link.status = req.body.issue.fields!.status.name!;
+					link.status = req.body.issue.fields.status.name!;
 					link.lastUpdate = new Date();
 					link.hasAssignment = 0;
 
@@ -447,7 +460,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					return;
 				}
 
-				if (req.body.issue.fields!.status.name === 'Sub QC/Language QC') {
+				if (req.body.issue.fields.status.name === 'Sub QC/Language QC') {
 					const newRow = new MessageActionRow()
 						.addComponents(
 							new MessageButton()
@@ -455,28 +468,28 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 								.setLabel('Assign LQC to me')
 								.setStyle('SUCCESS')
 								.setEmoji('819518919739965490')
-								.setDisabled(req.body.issue.fields![config.jira.fields.LQCAssignee] !== null),
+								.setDisabled(req.body.issue.fields[config.jira.fields.LQCAssignee] !== null),
 						).addComponents(
 							new MessageButton()
 								.setCustomId(`assignSQCToMe:${req.body.issue.key}`)
 								.setLabel('Assign SubQC to me')
 								.setStyle('SUCCESS')
 								.setEmoji('819518919739965490')
-								.setDisabled(req.body.issue.fields![config.jira.fields.SubQCAssignee] !== null),
+								.setDisabled(req.body.issue.fields[config.jira.fields.SubQCAssignee] !== null),
 						);
 
 					const embed = new MessageEmbed()
-						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields!.summary}`)
+						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields.summary}`)
 						.setColor('#0052cc')
-						.setDescription(req.body.issue.fields!.description ?? 'No description available')
-						.addField('Status', req.body.issue.fields!.status.name)
+						.setDescription(req.body.issue.fields.description ?? 'No description available')
+						.addField('Status', req.body.issue.fields.status.name)
 						.addField('LQC Assignee', 'Unassigned', true)
 						.addField('SubQC Assignee', 'Unassigned', true)
 						.addField('LQC Status', 'To do')
 						.addField('SubQC Status', 'To do')
-						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-						.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
-						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
+						.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
+						.setFooter({ text: `Due date: ${req.body.issue.fields.duedate || 'unknown'}` })
+						.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
 
 					const newMsg = await newChannel.send({
 						embeds: [embed],
@@ -490,7 +503,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					if (encounteredError) return;
 
 					link.discordMessageId = newMsg!.id;
-					link.status = req.body.issue.fields!.status.name;
+					link.status = req.body.issue.fields.status.name;
 					link.lastUpdate = new Date();
 					link.lqcProgressStart = undefined;
 					link.sqcProgressStart = undefined;
@@ -503,14 +516,14 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 							logger.error(err);
 						}
 					});
-				} else if (req.body.issue.fields!.status.name === 'Ready for release') {
+				} else if (req.body.issue.fields.status.name === 'Ready for release') {
 					const embed = new MessageEmbed()
-						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields!.summary}`)
+						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields.summary}`)
 						.setColor('#0052cc')
-						.setDescription(req.body.issue.fields!.description ?? 'No description available')
-						.addField('Status', req.body.issue.fields!.status.name)
-						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
+						.setDescription(req.body.issue.fields.description ?? 'No description available')
+						.addField('Status', req.body.issue.fields.status.name)
+						.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
+						.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
 
 					const newMsg = await newChannel.send({
 						content: 'New project ready for release',
@@ -524,7 +537,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					if (encounteredError) return;
 
 					link.discordMessageId = newMsg!.id;
-					link.status = req.body.issue.fields!.status.name;
+					link.status = req.body.issue.fields.status.name;
 					link.lastUpdate = new Date();
 					link.hasAssignment = 0;
 
@@ -537,9 +550,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					});
 				} else {
 					let user: any | undefined;
-					if (req.body.issue.fields!.assignee !== null) {
+					if (req.body.issue.fields.assignee !== null) {
 						const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
-							params: { key: req.body.issue.fields!.assignee.key },
+							params: { key: req.body.issue.fields.assignee.key },
 							auth: {
 								username: config.oauthServer.clientId,
 								password: config.oauthServer.clientSecret,
@@ -558,14 +571,14 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					}
 
 					const embed = new MessageEmbed()
-						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields!.summary}`)
+						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields.summary}`)
 						.setColor('#0052cc')
-						.setDescription(req.body.issue.fields!.description ?? 'No description available')
-						.addField('Status', req.body.issue.fields!.status.name!)
+						.setDescription(req.body.issue.fields.description ?? 'No description available')
+						.addField('Status', req.body.issue.fields.status.name!)
 						.addField('Assignee', user ? `<@${user._id}>` : 'Unassigned')
-						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-						.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
-						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
+						.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
+						.setFooter({ text: `Due date: ${req.body.issue.fields.duedate || 'unknown'}` })
+						.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
 
 					const newMsg = await newChannel.send({
 						embeds: [embed],
@@ -577,7 +590,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					});
 
 					link.discordMessageId = newMsg?.id ?? undefined;
-					link.status = req.body.issue.fields!.status.name!;
+					link.status = req.body.issue.fields.status.name!;
 					link.lastUpdate = new Date();
 
 					link.save((err) => {
@@ -606,14 +619,14 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			return;
 		}
 
-		const msg = await channel.messages.fetch(link.discordMessageId!)
+		const msg = link.discordMessageId ? await channel.messages.fetch(link.discordMessageId)
 			.catch((err) => {
 				const eventId = Sentry.captureException(err);
 				logger.error(`Encountered error while fetching message (${eventId})`);
 				logger.error(err);
 				encounteredError = true;
-			}) as Message;
-		if (encounteredError || !msg) return;
+			}) as Message : undefined;
+		if (encounteredError) return;
 
 		if (transitionName === 'Assign') {
 			const row = new MessageActionRow()
@@ -623,17 +636,25 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.setLabel('Assign to me')
 						.setStyle('SUCCESS')
 						.setEmoji('819518919739965490')
-						.setDisabled(req.body.issue.fields!.assignee !== null),
+						.setDisabled(req.body.issue.fields.assignee !== null),
 				);
 			link.progressStart = undefined;
 
-			if (req.body.issue.fields!.assignee === null) {
+			if (req.body.issue.fields.assignee === null) {
 				if (link.hasAssignment & (1 << 0)) {
 					link.hasAssignment -= (1 << 0);
 
 					if (link.inProgress & (1 << 0)) {
 						link.inProgress -= (1 << 0);
 					}
+
+					link.save((err) => {
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving issue link (${eventId})`);
+							logger.error(err);
+						}
+					});
 
 					const user = await UserInfo.findOne({ assignedTo: link.jiraKey }).exec()
 						.catch((err) => {
@@ -649,14 +670,6 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					user.assignedTo = undefined;
 					user.lastAssigned = new Date();
 
-					link.save((err) => {
-						if (err) {
-							const eventId = Sentry.captureException(err);
-							logger.error(`Encountered error while saving issue link (${eventId})`);
-							logger.error(err);
-						}
-					});
-
 					user.save((err) => {
 						if (err) {
 							const eventId = Sentry.captureException(err);
@@ -666,24 +679,55 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					});
 				}
 
-				const embed = msg.embeds[0].spliceFields(1, 1, {
-					name: 'Assignee',
-					value: 'Unassigned',
-				} as any);
+				const status = req.body.issue.fields.status.name;
 
-				const status = req.body.issue.fields!.status.name;
+				if (msg) {
+					const embed = msg.embeds[0].spliceFields(1, 1, {
+						name: 'Assignee',
+						value: 'Unassigned',
+					} as any);
 
-				await msg.edit({
-					embeds: [embed],
-					components: (status === 'Open' || status === 'Rejected' || status === 'Being clipped' || status === 'Uploaded') ? [] : [row],
-				}).catch((err) => {
-					const eventId = Sentry.captureException(err);
-					logger.error(`Encountered error while editing message in Discord user (${eventId})`);
-					logger.error(err);
-				});
+					await msg.edit({
+						embeds: [embed],
+						components: (status === 'Open' || status === 'Rejected' || status === 'Being clipped' || status === 'Uploaded') ? [] : [row],
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while editing message on Discord (${eventId})`);
+						logger.error(err);
+					});
+				} else {
+					logger.verbose(`No message found for ${req.body.issue.key}, creating one`);
+					const embed = new MessageEmbed()
+						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields.summary}`)
+						.setColor('#0052cc')
+						.setDescription(req.body.issue.fields.description ?? 'No description available')
+						.addField('Status', req.body.issue.fields.status.name!)
+						.addField('Assignee', 'Unassigned')
+						.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
+						.setFooter({ text: `Due date: ${req.body.issue.fields.duedate || 'unknown'}` })
+						.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
+
+					const newMsg = await channel.send({
+						embeds: [embed],
+						components: (status === 'Open' || status === 'Rejected' || status === 'Being clipped' || status === 'Uploaded') ? [] : [row],
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while sending message (${eventId})`);
+						logger.error(err);
+					});
+
+					link.discordMessageId = newMsg?.id;
+					link.save((err) => {
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving issue link (${eventId})`);
+							logger.error(err);
+						}
+					});
+				}
 			} else {
 				const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
-					params: { key: req.body.issue.fields!.assignee.key },
+					params: { key: req.body.issue.fields.assignee.key },
 					auth: {
 						username: config.oauthServer.clientId,
 						password: config.oauthServer.clientSecret,
@@ -721,6 +765,14 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					link.hasAssignment += (1 << 0);
 				}
 
+				link.save((err) => {
+					if (err) {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error saving issue link (${eventId})`);
+						logger.error(err);
+					}
+				});
+
 				let userDoc = await UserInfo.findById(user._id).exec()
 					.catch((err) => {
 						const eventId = Sentry.captureException(err);
@@ -750,27 +802,51 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						logger.error(err);
 					}
 				});
-				link.save((err) => {
-					if (err) {
+
+				if (msg) {
+					const embed = msg.embeds[0].spliceFields(1, 1, {
+						name: 'Assignee',
+						value: `<@${user._id}>`,
+					} as any);
+
+					msg.edit({
+						embeds: [embed],
+						components: [row],
+					}).catch((err) => {
 						const eventId = Sentry.captureException(err);
-						logger.error(`Encountered error saving issue link (${eventId})`);
+						logger.error(`Encountered error while editing message in Discord user (${eventId})`);
 						logger.error(err);
-					}
-				});
+					});
+				} else {
+					logger.verbose(`No message found for ${req.body.issue.key}, creating one`);
+					const embed = new MessageEmbed()
+						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields.summary}`)
+						.setColor('#0052cc')
+						.setDescription(req.body.issue.fields.description ?? 'No description available')
+						.addField('Status', req.body.issue.fields.status.name!)
+						.addField('Assignee', `<@${user._id}>`)
+						.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
+						.setFooter({ text: `Due date: ${req.body.issue.fields.duedate || 'unknown'}` })
+						.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
 
-				const embed = msg.embeds[0].spliceFields(1, 1, {
-					name: 'Assignee',
-					value: `<@${user._id}>`,
-				} as any);
+					const newMsg = await channel.send({
+						embeds: [embed],
+						components: [row],
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while sending message (${eventId})`);
+						logger.error(err);
+					});
 
-				msg.edit({
-					embeds: [embed],
-					components: [row],
-				}).catch((err) => {
-					const eventId = Sentry.captureException(err);
-					logger.error(`Encountered error while editing message in Discord user (${eventId})`);
-					logger.error(err);
-				});
+					link.discordMessageId = newMsg?.id;
+					link.save((err) => {
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving issue link (${eventId})`);
+							logger.error(err);
+						}
+					});
+				}
 
 				client.users.fetch(user._id)
 					.then((fetchedUser) => {
@@ -789,31 +865,90 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.setLabel('Assign LQC to me')
 						.setStyle('SUCCESS')
 						.setEmoji('819518919739965490')
-						.setDisabled(req.body.issue.fields![config.jira.fields.LQCAssignee] !== null),
+						.setDisabled(req.body.issue.fields[config.jira.fields.LQCAssignee] !== null),
 				).addComponents(
 					new MessageButton()
 						.setCustomId(`assignSQCToMe:${req.body.issue.key}`)
 						.setLabel('Assign SubQC to me')
 						.setStyle('SUCCESS')
 						.setEmoji('819518919739965490')
-						.setDisabled(req.body.issue.fields![config.jira.fields.SubQCAssignee] !== null),
+						.setDisabled(req.body.issue.fields[config.jira.fields.SubQCAssignee] !== null),
 				);
 			link.lqcProgressStart = undefined;
 
-			if (req.body.issue.fields![config.jira.fields.LQCAssignee] === null) {
-				const embed = msg.embeds[0].spliceFields(1, 1, {
-					name: 'LQC Assignee',
-					value: 'Unassigned',
-					inline: true,
-				} as any);
-				await msg.edit({
-					embeds: [embed],
-					components: [row],
-				}).catch((err) => {
-					const eventId = Sentry.captureException(err);
-					logger.error(`Encountered error while editing message in Discord user (${eventId})`);
-					logger.error(err);
-				});
+			if (req.body.issue.fields[config.jira.fields.LQCAssignee] === null) {
+				if (msg) {
+					const embed = msg.embeds[0].spliceFields(1, 1, {
+						name: 'LQC Assignee',
+						value: 'Unassigned',
+						inline: true,
+					} as any);
+					await msg.edit({
+						embeds: [embed],
+						components: [row],
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while editing message in Discord user (${eventId})`);
+						logger.error(err);
+					});
+				} else {
+					logger.verbose(`No message found for ${req.body.issue.key}, creating one`);
+
+					let SubQCAssignee = 'Unassigned';
+					if (req.body.issue.fields[config.jira.fields.SubQCAssignee] !== null) {
+						const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+							params: { key: req.body.issue.fields[config.jira.fields.SubQCAssignee].key },
+							auth: {
+								username: config.oauthServer.clientId,
+								password: config.oauthServer.clientSecret,
+							},
+						}).catch((err) => {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+							SubQCAssignee = '(Encountered error)';
+						});
+						if (oauthUserRes?.data) SubQCAssignee = `<@${oauthUserRes.data._id}>`;
+					}
+
+					const embed = new MessageEmbed()
+						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields.summary}`)
+						.setColor('#0052cc')
+						.setDescription(req.body.issue.fields.description ?? 'No description available')
+						.addField('Status', req.body.issue.fields.status.name!)
+						.addField('LQC Assignee', 'Unassigned', true)
+						.addField('SubQC Assignee', SubQCAssignee, true)
+						.addField('LQC Status', 'To do')
+						.addField(
+							'SubQC Status',
+							(
+								// eslint-disable-next-line no-nested-ternary
+								(req.body.issue.fields[config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done') ? 'Done' : (
+									req.body.issue.fields[config.jira.fields.SubQCAssignee] === null ? 'To do' : 'In progress'
+								) ?? 'To do'
+							),
+						)
+						.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
+						.setFooter({ text: `Due date: ${req.body.issue.fields.duedate || 'unknown'}` })
+						.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
+
+					const newMsg = await channel.send({
+						embeds: [embed],
+						components: [row],
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while sending message (${eventId})`);
+						logger.error(err);
+					});
+
+					link.discordMessageId = newMsg?.id;
+					link.save((err) => {
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving issue link (${eventId})`);
+							logger.error(err);
+						}
+					});
+				}
 
 				if (link.hasAssignment & (1 << 1)) {
 					link.hasAssignment -= (1 << 1);
@@ -854,7 +989,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				}
 			} else {
 				const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
-					params: { key: req.body.issue.fields!.assignee.key },
+					params: { key: req.body.issue.fields[config.jira.fields.LQCAssignee].key },
 					auth: {
 						username: config.oauthServer.clientId,
 						password: config.oauthServer.clientSecret,
@@ -929,20 +1064,79 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					}
 				});
 
-				const embed = msg.embeds[0].spliceFields(1, 1, {
-					name: 'LQC Assignee',
-					value: `<@${user._id}>`,
-					inline: true,
-				} as any);
+				if (msg) {
+					const embed = msg.embeds[0].spliceFields(1, 1, {
+						name: 'LQC Assignee',
+						value: `<@${user._id}>`,
+						inline: true,
+					} as any);
 
-				await msg.edit({
-					embeds: [embed],
-					components: [row],
-				}).catch((err) => {
-					const eventId = Sentry.captureException(err);
-					logger.error(`Encountered error while editing message in Discord user (${eventId})`);
-					logger.error(err);
-				});
+					await msg.edit({
+						embeds: [embed],
+						components: [row],
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while editing message in Discord user (${eventId})`);
+						logger.error(err);
+					});
+				} else {
+					logger.verbose(`No message found for ${req.body.issue.key}, creating one`);
+
+					let SubQCAssignee = 'Unassigned';
+					if (req.body.issue.fields[config.jira.fields.SubQCAssignee] !== null) {
+						const oauthSQCUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+							params: { key: req.body.issue.fields[config.jira.fields.SubQCAssignee].key },
+							auth: {
+								username: config.oauthServer.clientId,
+								password: config.oauthServer.clientSecret,
+							},
+						}).catch((err) => {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+							SubQCAssignee = '(Encountered error)';
+						});
+						if (oauthSQCUserRes?.data) SubQCAssignee = `<@${oauthSQCUserRes.data._id}>`;
+					}
+
+					const embed = new MessageEmbed()
+						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields.summary}`)
+						.setColor('#0052cc')
+						.setDescription(req.body.issue.fields.description ?? 'No description available')
+						.addField('Status', req.body.issue.fields.status.name!)
+						.addField('LQC Assignee', `<@${user._id}>`, true)
+						.addField('SubQC Assignee', SubQCAssignee, true)
+						.addField('LQC Status', 'To do')
+						.addField(
+							'SubQC Status',
+							(
+								// eslint-disable-next-line no-nested-ternary
+								(req.body.issue.fields[config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done') ? 'Done' : (
+									req.body.issue.fields[config.jira.fields.SubQCAssignee] === null ? 'To do' : 'In progress'
+								) ?? 'To do'
+							),
+						)
+						.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
+						.setFooter({ text: `Due date: ${req.body.issue.fields.duedate || 'unknown'}` })
+						.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
+
+					const newMsg = await channel.send({
+						embeds: [embed],
+						components: [row],
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while sending message (${eventId})`);
+						logger.error(err);
+					});
+
+					link.discordMessageId = newMsg?.id;
+					link.save((err) => {
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving issue link (${eventId})`);
+							logger.error(err);
+						}
+					});
+				}
 
 				client.users.fetch(user._id)
 					.then((fetchedUser) => {
@@ -962,33 +1156,92 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.setLabel('Assign LQC to me')
 						.setStyle('SUCCESS')
 						.setEmoji('819518919739965490')
-						.setDisabled(req.body.issue.fields![config.jira.fields.LQCAssignee] !== null),
+						.setDisabled(req.body.issue.fields[config.jira.fields.LQCAssignee] !== null),
 				).addComponents(
 					new MessageButton()
 						.setCustomId(`assignSQCToMe:${req.body.issue.key}`)
 						.setLabel('Assign SubQC to me')
 						.setStyle('SUCCESS')
 						.setEmoji('819518919739965490')
-						.setDisabled(req.body.issue.fields![config.jira.fields.SubQCAssignee] !== null),
+						.setDisabled(req.body.issue.fields[config.jira.fields.SubQCAssignee] !== null),
 				);
 
 			link.sqcProgressStart = undefined;
 
-			if (req.body.issue.fields![config.jira.fields.SubQCAssignee] === null) {
-				const embed = msg.embeds[0].spliceFields(2, 1, {
-					name: 'SubQC Assignee',
-					value: 'Unassigned',
-					inline: true,
-				} as any);
+			if (req.body.issue.fields[config.jira.fields.SubQCAssignee] === null) {
+				if (msg) {
+					const embed = msg.embeds[0].spliceFields(2, 1, {
+						name: 'SubQC Assignee',
+						value: 'Unassigned',
+						inline: true,
+					} as any);
 
-				await msg.edit({
-					embeds: [embed],
-					components: [row],
-				}).catch((err) => {
-					const eventId = Sentry.captureException(err);
-					logger.error(`Encountered error while editing message in Discord user (${eventId})`);
-					logger.error(err);
-				});
+					await msg.edit({
+						embeds: [embed],
+						components: [row],
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while editing message in Discord user (${eventId})`);
+						logger.error(err);
+					});
+				} else {
+					logger.verbose(`No message found for ${req.body.issue.key}, creating one`);
+
+					let LQCAssignee = 'Unassigned';
+					if (req.body.issue.fields[config.jira.fields.LQCAssignee] !== null) {
+						const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+							params: { key: req.body.issue.fields[config.jira.fields.LQCAssignee].key },
+							auth: {
+								username: config.oauthServer.clientId,
+								password: config.oauthServer.clientSecret,
+							},
+						}).catch((err) => {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+							LQCAssignee = '(Encountered error)';
+						});
+						if (oauthUserRes?.data) LQCAssignee = `<@${oauthUserRes.data._id}>`;
+					}
+
+					const embed = new MessageEmbed()
+						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields.summary}`)
+						.setColor('#0052cc')
+						.setDescription(req.body.issue.fields.description ?? 'No description available')
+						.addField('Status', req.body.issue.fields.status.name!)
+						.addField('LQC Assignee', LQCAssignee, true)
+						.addField('SubQC Assignee', 'Unassigned', true)
+						.addField(
+							'LQC Status',
+							(
+								// eslint-disable-next-line no-nested-ternary
+								(req.body.issue.fields[config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'LQC_done') ? 'Done' : (
+									req.body.issue.fields[config.jira.fields.LQCAssignee] === null ? 'To do' : 'In progress'
+								) ?? 'To do'
+							),
+						)
+						.addField('SubQC Status', 'To do')
+						.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
+						.setFooter({ text: `Due date: ${req.body.issue.fields.duedate || 'unknown'}` })
+						.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
+
+					const newMsg = await channel.send({
+						embeds: [embed],
+						components: [row],
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while sending message (${eventId})`);
+						logger.error(err);
+					});
+
+					link.discordMessageId = newMsg?.id;
+					link.save((err) => {
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving issue link (${eventId})`);
+							logger.error(err);
+						}
+					});
+				}
 
 				if (link.hasAssignment & (1 << 2)) {
 					link.hasAssignment -= (1 << 2);
@@ -1028,7 +1281,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				}
 			} else {
 				const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
-					params: { key: req.body.issue.fields![config.jira.fields.SubQCAssignee].key },
+					params: { key: req.body.issue.fields[config.jira.fields.SubQCAssignee].key },
 					auth: {
 						username: config.oauthServer.clientId,
 						password: config.oauthServer.clientSecret,
@@ -1104,20 +1357,79 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					}
 				});
 
-				const embed = msg.embeds[0].spliceFields(2, 1, {
-					name: 'SubQC Assignee',
-					value: `<@${user._id}>`,
-					inline: true,
-				} as any);
+				if (msg) {
+					const embed = msg.embeds[0].spliceFields(2, 1, {
+						name: 'SubQC Assignee',
+						value: `<@${user._id}>`,
+						inline: true,
+					} as any);
 
-				await msg.edit({
-					embeds: [embed],
-					components: [row],
-				}).catch((err) => {
-					const eventId = Sentry.captureException(err);
-					logger.error(`Encountered error while editing message in Discord user (${eventId})`);
-					logger.error(err);
-				});
+					await msg.edit({
+						embeds: [embed],
+						components: [row],
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while editing message in Discord user (${eventId})`);
+						logger.error(err);
+					});
+				} else {
+					logger.verbose(`No message found for ${req.body.issue.key}, creating one`);
+
+					let LQCAssignee = 'Unassigned';
+					if (req.body.issue.fields[config.jira.fields.LQCAssignee] !== null) {
+						const oauthLQCUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+							params: { key: req.body.issue.fields[config.jira.fields.LQCAssignee].key },
+							auth: {
+								username: config.oauthServer.clientId,
+								password: config.oauthServer.clientSecret,
+							},
+						}).catch((err) => {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+							LQCAssignee = '(Encountered error)';
+						});
+						if (oauthLQCUserRes?.data) LQCAssignee = `<@${oauthLQCUserRes.data._id}>`;
+					}
+
+					const embed = new MessageEmbed()
+						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields.summary}`)
+						.setColor('#0052cc')
+						.setDescription(req.body.issue.fields.description ?? 'No description available')
+						.addField('Status', req.body.issue.fields.status.name!)
+						.addField('LQC Assignee', LQCAssignee, true)
+						.addField('SubQC Assignee', `<@${user._id}>`, true)
+						.addField(
+							'LQC Status',
+							(
+								// eslint-disable-next-line no-nested-ternary
+								(req.body.issue.fields[config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'LQC_done') ? 'Done' : (
+									req.body.issue.fields[config.jira.fields.LQCAssignee] === null ? 'To do' : 'In progress'
+								) ?? 'To do'
+							),
+						)
+						.addField('SubQC Status', 'To do')
+						.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
+						.setFooter({ text: `Due date: ${req.body.issue.fields.duedate || 'unknown'}` })
+						.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
+
+					const newMsg = await channel.send({
+						embeds: [embed],
+						components: [row],
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while sending message (${eventId})`);
+						logger.error(err);
+					});
+
+					link.discordMessageId = newMsg?.id;
+					link.save((err) => {
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while saving issue link (${eventId})`);
+							logger.error(err);
+						}
+					});
+				}
 
 				client.users.fetch(user._id)
 					.then((fetchedUser) => {
@@ -1131,7 +1443,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			}
 		} else {
 			// eslint-disable-next-line max-len
-			link.languages = req.body.issue.fields![config.jira.fields.langs].map((language: JiraField) => language.value);
+			link.languages = req.body.issue.fields[config.jira.fields.langs].map((language: JiraField) => language.value);
 			link.save((err) => {
 				if (err) {
 					const eventId = Sentry.captureException(err);
@@ -1147,10 +1459,10 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.setLabel('Assign to me')
 						.setStyle('SUCCESS')
 						.setEmoji('819518919739965490')
-						.setDisabled(req.body.issue.fields!.assignee !== null),
+						.setDisabled(req.body.issue.fields.assignee !== null),
 				);
 
-			if (req.body.issue.fields!.status.name === link.status) {
+			if (req.body.issue.fields.status.name === link.status) {
 				if (link.status === 'Sub QC/Language QC') {
 					const newRow = new MessageActionRow()
 						.addComponents(
@@ -1159,29 +1471,66 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 								.setLabel('Assign LQC to me')
 								.setStyle('SUCCESS')
 								.setEmoji('819518919739965490')
-								.setDisabled(req.body.issue.fields![config.jira.fields.LQCAssignee] !== null),
+								.setDisabled(req.body.issue.fields[config.jira.fields.LQCAssignee] !== null),
 						).addComponents(
 							new MessageButton()
 								.setCustomId(`assignSQCToMe:${req.body.issue.key}`)
 								.setLabel('Assign SubQC to me')
 								.setStyle('SUCCESS')
 								.setEmoji('819518919739965490')
-								.setDisabled(req.body.issue.fields![config.jira.fields.SubQCAssignee] !== null),
+								.setDisabled(req.body.issue.fields[config.jira.fields.SubQCAssignee] !== null),
 						);
+
+					let LQCAssignee = 'Unassigned';
+					let SubQCAssignee = 'Unassigned';
+
+					if (msg) {
+						LQCAssignee = msg.embeds[0].fields[1].value;
+						SubQCAssignee = msg.embeds[0].fields[2].value;
+					} else {
+						if (req.body.issue.fields[config.jira.fields.LQCAssignee] !== null) {
+							const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+								params: { key: req.body.issue.fields[config.jira.fields.LQCAssignee].key },
+								auth: {
+									username: config.oauthServer.clientId,
+									password: config.oauthServer.clientSecret,
+								},
+							}).catch((err) => {
+								const eventId = Sentry.captureException(err);
+								logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+								LQCAssignee = '(Encountered error)';
+							});
+							if (oauthUserRes?.data) LQCAssignee = `<@${oauthUserRes.data._id}>`;
+						}
+						if (req.body.issue.fields[config.jira.fields.SubQCAssigneeS] !== null) {
+							const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+								params: { key: req.body.issue.fields[config.jira.fields.SubQCAssignee].key },
+								auth: {
+									username: config.oauthServer.clientId,
+									password: config.oauthServer.clientSecret,
+								},
+							}).catch((err) => {
+								const eventId = Sentry.captureException(err);
+								logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+								SubQCAssignee = '(Encountered error)';
+							});
+							if (oauthUserRes?.data) SubQCAssignee = `<@${oauthUserRes.data._id}>`;
+						}
+					}
 
 					const embed = new MessageEmbed()
 						.setTitle(req.body.issue.key!)
 						.setColor('#0052cc')
-						.setDescription(req.body.issue.fields!.summary ?? 'No description available')
-						.addField('Status', req.body.issue.fields!.status.name)
-						.addField('LQC Assignee', msg.embeds[0].fields[1].value, true)
-						.addField('SubQC Assignee', msg.embeds[0].fields[2].value, true)
+						.setDescription(req.body.issue.fields.summary ?? 'No description available')
+						.addField('Status', req.body.issue.fields.status.name)
+						.addField('LQC Assignee', LQCAssignee, true)
+						.addField('SubQC Assignee', SubQCAssignee, true)
 						.addField(
 							'LQC Status',
 							(
 								// eslint-disable-next-line no-nested-ternary
-								(req.body.issue.fields![config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'LQC_done') ? 'Done' : (
-									req.body.issue.fields![config.jira.fields.LQCAssignee] === null ? 'To do' : 'In progress'
+								(req.body.issue.fields[config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'LQC_done') ? 'Done' : (
+									req.body.issue.fields[config.jira.fields.LQCAssignee] === null ? 'To do' : 'In progress'
 								) ?? 'To do'
 							),
 						)
@@ -1189,42 +1538,104 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 							'SubQC Status',
 							(
 								// eslint-disable-next-line no-nested-ternary
-								(req.body.issue.fields![config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done') ? 'Done' : (
-									req.body.issue.fields![config.jira.fields.SubQCAssignee] === null ? 'To do' : 'In progress'
+								(req.body.issue.fields[config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done') ? 'Done' : (
+									req.body.issue.fields[config.jira.fields.SubQCAssignee] === null ? 'To do' : 'In progress'
 								) ?? 'To do'
 							),
 						)
-						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-						.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
-						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
+						.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
+						.setFooter({ text: `Due date: ${req.body.issue.fields.duedate || 'unknown'}` })
+						.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
 
-					await msg.edit({
-						embeds: [embed],
-						components: [newRow],
-					}).catch((err) => {
-						const eventId = Sentry.captureException(err);
-						logger.error(`Encountered error while editing message in Discord user (${eventId})`);
-						logger.error(err);
-					});
+					if (msg) {
+						await msg.edit({
+							embeds: [embed],
+							components: [newRow],
+						}).catch((err) => {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while editing message in Discord user (${eventId})`);
+							logger.error(err);
+						});
+					} else {
+						logger.verbose(`No message found for ${req.body.issue.key}, creating one`);
+
+						const newMsg = await channel.send({
+							embeds: [embed],
+							components: [row],
+						}).catch((err) => {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while sending message (${eventId})`);
+							logger.error(err);
+						});
+
+						link.discordMessageId = newMsg?.id;
+						link.save((err) => {
+							if (err) {
+								const eventId = Sentry.captureException(err);
+								logger.error(`Encountered error while saving issue link (${eventId})`);
+								logger.error(err);
+							}
+						});
+					}
 				} else {
-					const embed = new MessageEmbed()
-						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields!.summary}`)
-						.setColor('#0052cc')
-						.setDescription(req.body.issue.fields!.description ?? 'No description available')
-						.addField('Status', req.body.issue.fields!.status.name)
-						.addField('Assignee', msg.embeds[0].fields[1].value)
-						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-						.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
-						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
+					let assignee = 'Unassigned';
+					if (msg) {
+						assignee = msg.embeds[0].fields[1].value;
+					} else if (req.body.issue.fields.assignee) {
+						const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+							params: { key: req.body.issue.fields.assignee.key },
+							auth: {
+								username: config.oauthServer.clientId,
+								password: config.oauthServer.clientSecret,
+							},
+						}).catch((err) => {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+							assignee = '(Encountered error)';
+						});
+						if (oauthUserRes?.data) assignee = `<@${oauthUserRes.data._id}>`;
+					}
 
-					await msg.edit({
-						embeds: [embed],
-						components: [row],
-					}).catch((err) => {
-						const eventId = Sentry.captureException(err);
-						logger.error(`Encountered error while editing message in Discord user (${eventId})`);
-						logger.error(err);
-					});
+					const embed = new MessageEmbed()
+						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields.summary}`)
+						.setColor('#0052cc')
+						.setDescription(req.body.issue.fields.description ?? 'No description available')
+						.addField('Status', req.body.issue.fields.status.name)
+						.addField('Assignee', assignee)
+						.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
+						.setFooter({ text: `Due date: ${req.body.issue.fields.duedate || 'unknown'}` })
+						.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
+
+					if (msg) {
+						await msg.edit({
+							embeds: [embed],
+							components: [row],
+						}).catch((err) => {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while editing message in Discord user (${eventId})`);
+							logger.error(err);
+						});
+					} else {
+						logger.verbose(`No message found for ${req.body.issue.key}, creating one`);
+
+						const newMsg = await channel.send({
+							embeds: [embed],
+							components: [row],
+						}).catch((err) => {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while sending message (${eventId})`);
+							logger.error(err);
+						});
+
+						link.discordMessageId = newMsg?.id;
+						link.save((err) => {
+							if (err) {
+								const eventId = Sentry.captureException(err);
+								logger.error(`Encountered error while saving issue link (${eventId})`);
+								logger.error(err);
+							}
+						});
+					}
 				}
 			} else {
 				const assignedUsers = await UserInfo.find({ assignedTo: req.body.issue.key }).exec();
@@ -1246,7 +1657,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				});
 
 				// eslint-disable-next-line max-len
-				const newStatusLink = await StatusLink.findById(req.body.issue.fields!.status.name).lean().exec()
+				const newStatusLink = await StatusLink.findById(req.body.issue.fields.status.name).lean().exec()
 					.catch((err) => {
 						const eventId = Sentry.captureException(err);
 						logger.error(`Encountered error while fetching status link (${eventId})`);
@@ -1256,9 +1667,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				if (encounteredError) return;
 
 				if (!newStatusLink) {
-					logger.warn(`No channel link found for: ${req.body.issue.fields!.status.name}`);
+					logger.warn(`No channel link found for: ${req.body.issue.fields.status.name}`);
 					link.discordMessageId = undefined;
-					link.status = req.body.issue.fields!.status.name!;
+					link.status = req.body.issue.fields.status.name!;
 					link.lastUpdate = new Date();
 					link.hasAssignment = 0;
 
@@ -1286,7 +1697,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					return;
 				}
 
-				if (req.body.issue.fields!.status.name === 'Sub QC/Language QC') {
+				if (req.body.issue.fields.status.name === 'Sub QC/Language QC') {
 					const newRow = new MessageActionRow()
 						.addComponents(
 							new MessageButton()
@@ -1294,28 +1705,28 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 								.setLabel('Assign LQC to me')
 								.setStyle('SUCCESS')
 								.setEmoji('819518919739965490')
-								.setDisabled(req.body.issue.fields![config.jira.fields.LQCAssignee] !== null),
+								.setDisabled(req.body.issue.fields[config.jira.fields.LQCAssignee] !== null),
 						).addComponents(
 							new MessageButton()
 								.setCustomId(`assignSQCToMe:${req.body.issue.key}`)
 								.setLabel('Assign SubQC to me')
 								.setStyle('SUCCESS')
 								.setEmoji('819518919739965490')
-								.setDisabled(req.body.issue.fields![config.jira.fields.SubQCAssignee] !== null),
+								.setDisabled(req.body.issue.fields[config.jira.fields.SubQCAssignee] !== null),
 						);
 
 					const embed = new MessageEmbed()
-						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields!.summary}`)
+						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields.summary}`)
 						.setColor('#0052cc')
-						.setDescription(req.body.issue.fields!.description ?? 'No description available')
-						.addField('Status', req.body.issue.fields!.status.name)
+						.setDescription(req.body.issue.fields.description ?? 'No description available')
+						.addField('Status', req.body.issue.fields.status.name)
 						.addField('LQC Assignee', 'Unassigned', true)
 						.addField('SubQC Assignee', 'Unassigned', true)
 						.addField('LQC Status', 'To do')
 						.addField('SubQC Status', 'To do')
-						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-						.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
-						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
+						.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
+						.setFooter({ text: `Due date: ${req.body.issue.fields.duedate || 'unknown'}` })
+						.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
 
 					const newMsg = await newChannel.send({
 						embeds: [embed],
@@ -1327,7 +1738,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					});
 
 					link.discordMessageId = newMsg?.id ?? undefined;
-					link.status = req.body.issue.fields!.status.name;
+					link.status = req.body.issue.fields.status.name;
 					link.lastUpdate = new Date();
 					link.progressStart = undefined;
 					link.lqcProgressStart = undefined;
@@ -1343,20 +1754,21 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						}
 					});
 
-					await msg.delete()
+					if (!msg) logger.warn(`No message to delete, this might be wrong. (${req.body.issue.key}`);
+					await msg?.delete()
 						.catch((err) => {
 							const eventId = Sentry.captureException(err);
 							logger.error(`Encountered error while deleting message (${eventId})`);
 							logger.error(err);
 						});
-				} else if (req.body.issue.fields!.status.name === 'Ready for release') {
+				} else if (req.body.issue.fields.status.name === 'Ready for release') {
 					const embed = new MessageEmbed()
-						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields!.summary}`)
+						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields.summary}`)
 						.setColor('#0052cc')
-						.setDescription(req.body.issue.fields!.description ?? 'No description available')
-						.addField('Status', req.body.issue.fields!.status.name)
-						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
+						.setDescription(req.body.issue.fields.description ?? 'No description available')
+						.addField('Status', req.body.issue.fields.status.name)
+						.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
+						.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
 
 					const newMsg = await newChannel.send({
 						content: 'New project ready for release',
@@ -1368,7 +1780,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					});
 
 					link.discordMessageId = newMsg?.id ?? undefined;
-					link.status = req.body.issue.fields!.status.name;
+					link.status = req.body.issue.fields.status.name;
 					link.lastUpdate = new Date();
 					link.hasAssignment = 0;
 
@@ -1380,7 +1792,8 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						}
 					});
 
-					await msg.delete()
+					if (!msg) logger.warn(`No message to delete, this might be wrong. (${req.body.issue.key}`);
+					await msg?.delete()
 						.catch((err) => {
 							const eventId = Sentry.captureException(err);
 							logger.error(`Encountered error while deleting message (${eventId})`);
@@ -1388,11 +1801,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						});
 				} else {
 					let user: any | undefined;
-					if (req.body.issue.fields!.assignee !== null) {
+					if (req.body.issue.fields.assignee !== null) {
 						link.hasAssignment = (1 << 0);
 
 						const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
-							params: { key: req.body.issue.fields!.assignee.key },
+							params: { key: req.body.issue.fields.assignee.key },
 							auth: {
 								username: config.oauthServer.clientId,
 								password: config.oauthServer.clientSecret,
@@ -1408,14 +1821,14 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					}
 
 					const embed = new MessageEmbed()
-						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields!.summary}`)
+						.setTitle(`${req.body.issue.key}: ${req.body.issue.fields.summary}`)
 						.setColor('#0052cc')
-						.setDescription(req.body.issue.fields!.description ?? 'No description available')
-						.addField('Status', req.body.issue.fields!.status.name!)
+						.setDescription(req.body.issue.fields.description ?? 'No description available')
+						.addField('Status', req.body.issue.fields.status.name!)
 						.addField('Assignee', user ? `<@${user._id}>` : 'Unassigned')
-						.addField('Source', `[link](${req.body.issue.fields![config.jira.fields.videoLink]})`)
-						.setFooter({ text: `Due date: ${req.body.issue.fields!.duedate || 'unknown'}` })
-						.setURL(`${config.jira.url}/projects/${req.body.issue.fields!.project.key}/issues/${req.body.issue.key}`);
+						.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
+						.setFooter({ text: `Due date: ${req.body.issue.fields.duedate || 'unknown'}` })
+						.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
 
 					const newMsg = await newChannel.send({
 						embeds: [embed],
@@ -1427,7 +1840,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					});
 
 					link.discordMessageId = newMsg?.id ?? undefined;
-					link.status = req.body.issue.fields!.status.name!;
+					link.status = req.body.issue.fields.status.name!;
 					link.lastUpdate = new Date();
 
 					link.save((err) => {
@@ -1438,7 +1851,8 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						}
 					});
 
-					await msg.delete()
+					if (!msg) logger.warn(`No message to delete, this might be wrong. (${req.body.issue.key}`);
+					await msg?.delete()
 						.catch((err) => {
 							const eventId = Sentry.captureException(err);
 							logger.error(`Encountered error while deleting message (${eventId})`);
