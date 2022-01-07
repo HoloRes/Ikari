@@ -50,12 +50,18 @@
             "SubQCAssignee": "",
             "LQCSubQCFinished": ""
         },
+        "artist": {
+            "transitions" : {
+                "Abandon project": "",
+                "Assign": ""
+            }
+        },
         "transitions": {
             "Assign": "",
             "Assign SubQC": "",
             "Assign LQC": "",
             "Send to translator": "",
-            "Abandon Project": ""
+            "Abandon project": ""
         }
     },
     "webhookSecret": "",

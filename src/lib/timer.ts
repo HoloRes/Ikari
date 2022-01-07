@@ -15,13 +15,17 @@ import checkValid from './checkValid';
 import Setting from '../models/Setting';
 import { allServicesOnline } from './middleware';
 
-const config = require('../config.json');
-const strings = require('../strings.json');
+const config = require('../../config.json');
+const strings = require('../../strings.json');
 
 async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void> {
 	let encounteredError = false;
 
-	const hiatusRole = await GroupLink.findOne({ jiraName: 'Hiatus' }).exec();
+	const hiatusRole = await GroupLink.findOne({ jiraName: 'Hiatus' }).exec()
+		.catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while fetching hiatus group link (${eventId})`);
+		});
 
 	const available = await UserInfo.find({
 		roles: {
@@ -57,7 +61,9 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 		filteredAvailable = available.filter(async (user) => {
 			const member = await guild.members.fetch(user._id)
 				.catch((err) => {
-					throw err;
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching user from Discord (${eventId})`);
+					logger.error(err);
 				});
 			if (!member) return false;
 			return checkValid(member, project.status, project.languages, role);
@@ -180,10 +186,136 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 	}
 }
 
+async function autoAssignArtist(project: Document<any, any, Project> & Project) {
+	let encounteredError = false;
+
+	const hiatusRole = await GroupLink.findOne({ jiraName: 'Hiatus' }).exec()
+		.catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while fetching hiatus group link (${eventId})`);
+		});
+
+	const artistRole = await GroupLink.findOne({ jiraName: 'Artist' }).exec()
+		.catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while fetching artist group link (${eventId})`);
+		});
+
+	if (!artistRole) {
+		logger.warn('No artist role found');
+		return;
+	}
+
+	const available = await UserInfo.find({
+		roles: {
+			// Set to something impossible when the hiatus role cannot be found
+			$ne: hiatusRole?._id ?? '0000',
+		},
+		isAssigned: false,
+	}).sort({ lastAssigned: 'desc' }).exec().catch((err) => {
+		const eventId = Sentry.captureException(err);
+		logger.error(`Encountered error while fetching project link (${eventId})`);
+		logger.error(err);
+		encounteredError = true;
+	});
+	if (encounteredError || !available) return;
+
+	const guild = await client.guilds.fetch(config.discord.guild)
+		.catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while fetching guild from Discord (${eventId})`);
+			logger.error(err);
+			encounteredError = true;
+		});
+	if (encounteredError) return;
+
+	if (!guild) return;
+	if (available.length === 0) {
+		logger.info(`Somehow, there's no one available for: ${project.jiraKey}`);
+		return;
+	}
+
+	let filteredAvailable;
+	try {
+		filteredAvailable = available.filter(async (user) => {
+			const member = await guild.members.fetch(user._id)
+				.catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching user from Discord (${eventId})`);
+					logger.error(err);
+				});
+			if (!member) return false;
+			return member.roles.cache.has(artistRole._id);
+		});
+	} catch (err) {
+		const eventId = Sentry.captureException(err);
+		logger.error(`Encountered error while filtering available users (${eventId})`);
+		logger.error(err);
+		return;
+	}
+
+	if (filteredAvailable?.length === 0) {
+		logger.info(`Somehow, there's no one available for: ${project.jiraKey}`);
+		return;
+	}
+
+	const res = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
+		params: { id: filteredAvailable[0]._id },
+		auth: {
+			username: config.oauthServer.clientId,
+			password: config.oauthServer.clientSecret,
+		},
+	}).catch((err) => {
+		const eventId = Sentry.captureException(err);
+		logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+		encounteredError = true;
+	});
+	if (encounteredError) return;
+	const user = res!.data;
+
+	const discordUser = await client.users.fetch(filteredAvailable[0]._id)
+		.catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while fetching user on Discord (${eventId})`);
+			logger.error(err);
+			encounteredError = true;
+		});
+	if (encounteredError || !discordUser) return;
+
+	await jiraClient.issues.doTransition({
+		issueIdOrKey: project.jiraKey!,
+		fields: {
+			assignee: {
+				name: user.username,
+			},
+		},
+		transition: {
+			id: config.jira.artist.transitions.Assign,
+		},
+	}).then(async () => {
+		await discordUser.send(format(strings.autoAssignedTo, { jiraKey: project.jiraKey }));
+		await jiraClient.issueComments.addComment({
+			issueIdOrKey: project.jiraKey!,
+			body: `Auto assigned project to [~${user.username}].`,
+		}).catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while adding comment on Jira (${eventId})`);
+		});
+	}).catch((err) => {
+		const eventId = Sentry.captureException(err);
+		logger.error(`Encountered error transitioning issue (${eventId})`);
+	});
+}
+
 async function projectRequestInProgressMark(project: Document<any, any, Project> & Project) {
 	let encounteredError = false;
 
-	const repeatRequestAfter = await Setting.findById('repeatRequestAfter').lean().exec();
+	const repeatRequestAfter = await Setting.findById('repeatRequestAfter').lean().exec()
+		.catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while fetching setting (${eventId})`);
+		});
+
 	const compareDate = new Date(
 		Date.now()
 		// Fallback is 4 days.
@@ -445,7 +577,6 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 		const user = await UserInfo.findOne({
 			isAssigned: true,
 			assignedTo: project.jiraKey,
-			assignedAs: 'sqc',
 		}).exec().catch((err) => {
 			const eventId = Sentry.captureException(err);
 			logger.error(`Encountered error while fetching user doc (${eventId})`);
@@ -472,7 +603,7 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 							assignee: null,
 						},
 						transition: {
-							id: config.jira.transitions.Assign,
+							id: project.type === 'translation' ? config.jira.transitions.Assign : config.jira.artist.transitions.Assign,
 						},
 					}).catch((err) => {
 						const eventId = Sentry.captureException(err);
@@ -536,7 +667,7 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 					.addComponents(
 						new MessageButton()
 							.setStyle('DANGER')
-							.setCustomId(`abandonProject:${project.jiraKey}`)
+							.setCustomId(`${project.type === 'artist' ? 'artist:' : ''}abandonProject:${project.jiraKey}`)
 							.setLabel('Abandon project'),
 					);
 
@@ -580,8 +711,18 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 }
 
 async function staleAnnounce(project: Document<any, any, Project> & Project) {
-	const teamLeadNotifySetting = await Setting.findById('teamLeadNotifyChannel').lean().exec();
-	const maxTimeTaken = await Setting.findById('maxTimeTaken').lean().exec();
+	const teamLeadNotifySetting = await Setting.findById('teamLeadNotifyChannel').lean().exec()
+		.catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while fetching setting (${eventId})`);
+		});
+
+	const maxTimeTaken = await Setting.findById('maxTimeTaken').lean().exec()
+		.catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while fetching setting (${eventId})`);
+		});
+
 	// eslint-disable-next-line max-len
 	const compareDate = new Date(Date.now() - (maxTimeTaken ? parseInt(maxTimeTaken.value, 10) : (30 * 24 * 60 * 60 * 1000)));
 	const maxTimeStr = humanizeDuration(
@@ -682,11 +823,11 @@ async function staleAnnounce(project: Document<any, any, Project> & Project) {
 			.addComponents(
 				new MessageButton()
 					.setStyle('DANGER')
-					.setCustomId(`teamLead:abandonProject:${project.jiraKey}`)
+					.setCustomId(`teamLead:${project.type === 'artist' ? 'artist:' : ''}abandonProject:${project.jiraKey}`)
 					.setLabel('Abandon project'),
 				new MessageButton()
 					.setStyle('PRIMARY')
-					.setCustomId(`teamLead:unassign:${project.jiraKey}`)
+					.setCustomId(`teamLead:${project.type === 'artist' ? 'artist:' : ''}unassign:${project.jiraKey}`)
 					.setLabel('Un-assign project'),
 			);
 
@@ -720,7 +861,13 @@ cron.schedule('0 * * * *', async () => {
 		logger.info('Unable to execute timer, a service is offline!');
 		return;
 	}
-	const autoAssignAfter = await Setting.findById('autoAssignAfter').lean().exec();
+
+	// Auto assign stuff
+	const autoAssignAfter = await Setting.findById('autoAssignAfter').lean().exec()
+		.catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while fetching setting (${eventId})`);
+		});
 
 	const toAutoAssign = await IdLink.find({
 		$or: [
@@ -769,11 +916,14 @@ cron.schedule('0 * * * *', async () => {
 			if (!(project.hasAssignment & (1 << 2))) {
 				autoAssign(project, 'sqc');
 			}
+		} else if (project.type === 'artist') {
+			autoAssignArtist(project);
 		} else {
 			autoAssign(project);
 		}
 	});
 
+	// Progress request
 	const toRequestInProgress = await IdLink.find({
 		$or: [
 			{
@@ -795,6 +945,7 @@ cron.schedule('0 * * * *', async () => {
 		projectRequestInProgressMark(project);
 	});
 
+	// Stale checking
 	const maxTimeTaken = await Setting.findById('maxTimeTaken').lean().exec()
 		.catch((err) => {
 			const eventId = Sentry.captureException(err);

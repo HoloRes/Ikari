@@ -1,4 +1,5 @@
 import axios from 'axios';
+import Sentry from '@sentry/node';
 import {
 	logger, conn1, conn2, jiraClient,
 } from '../index';
@@ -13,8 +14,8 @@ export async function updateUserGroups(discordId: string): Promise<void> {
 			password: config.oauthServer.clientSecret,
 		},
 	}).catch((err) => {
-		logger.error(err.response.data);
-		throw new Error(err);
+		const eventId = Sentry.captureException(err);
+		logger.error(`Encountered error while updating user groups (${eventId})`);
 	});
 }
 

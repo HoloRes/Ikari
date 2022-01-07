@@ -141,7 +141,6 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				lastUpdate: new Date(),
 				lastStatusChange: new Date(),
 			});
-			return;
 		}
 
 		if (link.finished || link.abandoned) return;
@@ -298,22 +297,89 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			if (statusLink && link.discordMessageId) {
 				const channel = await client.channels.fetch(statusLink.channel)
 					.catch((err) => {
-						throw new Error(err);
-					}) as unknown as BaseGuildTextChannel | null;
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching Discord channel (${eventId})`);
+						logger.error(err);
+						encounteredError = true;
+					}) as TextChannel;
 
 				if (channel?.type !== 'GUILD_TEXT') {
 					logger.error(`Channel: ${statusLink.channel} is not a guild text channel`);
-					return;
+				} else {
+					const msg = await channel.messages.fetch(link.discordMessageId)
+						.catch((err) => {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while fetching Discord channel (${eventId})`);
+							logger.error(err);
+						});
+					await msg?.delete();
+				}
+			}
+
+			if (link.hasAssignment > 0) {
+				const previousAssignedUsers = await UserInfo.find({
+					isAssigned: true,
+					assignedTo: req.body.issue.key,
+				}).exec().catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching user from db (${eventId})`);
+				});
+
+				previousAssignedUsers?.forEach((previousAssignedUser) => {
+					/* eslint-disable no-param-reassign */
+					previousAssignedUser.isAssigned = false;
+					previousAssignedUser.assignedAs = undefined;
+					previousAssignedUser.assignedTo = undefined;
+					previousAssignedUser.lastAssigned = new Date();
+					previousAssignedUser.save((err) => {
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error saving user in db (${eventId})`);
+							logger.error(err);
+						}
+					});
+					/* eslint-enable */
+				});
+			}
+
+			if (transitionName === 'Uploaded') link.finished = true;
+			if (transitionName === 'Abandon project') {
+				const issue = await jiraClient.issues.getIssue({ issueIdOrKey: req.body.issue.key, fields: ['issuelinks'] })
+					.catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching issue on Jira (${eventId})`);
+					});
+				if (issue) {
+					const links = issue.fields.issuelinks;
+					links.forEach((linkedIssueBare) => {
+						if (linkedIssueBare.inwardIssue?.key) {
+							jiraClient.issues.getIssue({ issueIdOrKey: req.body.issue.key, fields: ['issuelinks'] })
+								.then(async (linkedIssue) => {
+									if (linkedIssue.fields.project.key === 'ARTIST') {
+										await jiraClient.issues.doTransition({
+											issueIdOrKey: linkedIssue.key,
+											fields: {
+												[config.jira.fields.LQCAssignee]: null,
+											},
+											transition: {
+												id: config.jira.artist.transitions['Abandon project'],
+											},
+										}).catch((err) => {
+											const eventId = Sentry.captureException(err);
+											logger.error(`Encountered error transitioning issue (${eventId})`);
+										});
+									}
+								})
+								.catch((err) => {
+									const eventId = Sentry.captureException(err);
+									logger.error(`Encountered error while fetching issue on Jira (${eventId})`);
+								});
+						}
+					});
 				}
 
-				const msg = await channel.messages.fetch(link.discordMessageId)
-					.catch((err) => {
-						throw new Error(err);
-					});
-				await msg.delete();
+				link.abandoned = true;
 			}
-			if (transitionName === 'Uploaded') link.finished = true;
-			if (transitionName === 'Abandon project') link.abandoned = true;
 			link.save((err) => {
 				if (err) {
 					const eventId = Sentry.captureException(err);
@@ -384,8 +450,13 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					);
 
 				// Un-assign all users who were assigned in the previous status
-				const assignedUsers = await UserInfo.find({ assignedTo: req.body.issue.key }).exec();
-				assignedUsers.forEach((user) => {
+				const assignedUsers = await UserInfo.find({ assignedTo: req.body.issue.key }).exec()
+					.catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching users from db (${eventId})`);
+					});
+
+				assignedUsers?.forEach((user) => {
 					/* eslint-disable no-param-reassign */
 					user.isAssigned = false;
 					user.lastAssigned = new Date();
@@ -743,7 +814,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				const previousAssignedUser = await UserInfo.findOne({
 					isAssigned: true,
 					assignedTo: req.body.issue.key,
-				}).exec();
+				}).exec().catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching user from db (${eventId})`);
+				});
+
 				if (previousAssignedUser && previousAssignedUser._id !== user._id) {
 					previousAssignedUser.isAssigned = false;
 					previousAssignedUser.assignedAs = undefined;
@@ -764,6 +839,8 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				if (!(link.hasAssignment & (1 << 0))) {
 					link.hasAssignment += (1 << 0);
 				}
+
+				link.lastUpdate = new Date();
 
 				link.save((err) => {
 					if (err) {
@@ -792,8 +869,6 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				userDoc.assignedTo = req.body.issue.key;
 				userDoc.updateRequested = new Date();
 				userDoc.updateRequestCount = 0;
-
-				link.lastUpdate = new Date();
 
 				userDoc.save((err) => {
 					if (err) {
@@ -1006,7 +1081,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					isAssigned: true,
 					assignedTo: req.body.issue.key,
 					assignedAs: 'lqc',
-				}).exec();
+				}).exec().catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching user from db (${eventId})`);
+				});
+
 				if (previousAssignedUser && previousAssignedUser._id !== user._id) {
 					previousAssignedUser.isAssigned = false;
 					previousAssignedUser.assignedAs = undefined;
@@ -1298,7 +1377,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					isAssigned: true,
 					assignedTo: req.body.issue.key,
 					assignedAs: 'sqc',
-				}).exec();
+				}).exec().catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching user from db (${eventId})`);
+				});
+
 				if (previousAssignedUser && previousAssignedUser._id !== user._id) {
 					previousAssignedUser.isAssigned = false;
 					previousAssignedUser.assignedAs = undefined;
@@ -1638,9 +1721,14 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					}
 				}
 			} else {
-				const assignedUsers = await UserInfo.find({ assignedTo: req.body.issue.key }).exec();
+				const assignedUsers = await UserInfo.find({ assignedTo: req.body.issue.key }).exec()
+					.catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching users from db (${eventId})`);
+					});
+
 				// eslint-disable-next-line array-callback-return
-				assignedUsers.map((user) => {
+				assignedUsers?.map((user) => {
 					/* eslint-disable no-param-reassign */
 					user.isAssigned = false;
 					user.lastAssigned = new Date();
@@ -1825,7 +1913,8 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.setColor('#0052cc')
 						.setDescription(req.body.issue.fields.description ?? 'No description available')
 						.addField('Status', req.body.issue.fields.status.name!)
-						.addField('Assignee', user ? `<@${user._id}>` : 'Unassigned')
+						// eslint-disable-next-line no-nested-ternary
+						.addField('Assignee', (user ? `<@${user._id}>` : (encounteredError ? '(Encountered error)' : 'Unassigned')))
 						.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
 						.setFooter({ text: `Due date: ${req.body.issue.fields.duedate || 'unknown'}` })
 						.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
@@ -1864,13 +1953,343 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 	}
 });
 
-// TODO: Handle artist work
-router.post('/webhook/artist', (req, res) => {
+router.post('/webhook/artist', async (req, res) => {
 	if (req.query.token !== config.webhookSecret) {
 		res.status(403).end();
 		return;
 	}
 	res.status(200).end();
+
+	let encounteredError = false;
+
+	const row = new MessageActionRow()
+		.addComponents(
+			new MessageButton()
+				.setCustomId(`artist:assignToMe:${req.body.issue.key}`)
+				.setLabel('Assign to me')
+				.setStyle('SUCCESS')
+				.setEmoji('819518919739965490')
+				.setDisabled(req.body.issue.fields.assignee !== null),
+		);
+
+	let assignee = 'Unassigned';
+	let user: any;
+	if (req.body.issue.fields.assignee) {
+		const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+			params: { key: req.body.issue.fields.assignee.key },
+			auth: {
+				username: config.oauthServer.clientId,
+				password: config.oauthServer.clientSecret,
+			},
+		}).catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+			assignee = '(Encountered error)';
+		});
+		if (oauthUserRes?.data) {
+			user = oauthUserRes.data;
+			assignee = `<@${oauthUserRes.data._id}>`;
+		}
+	}
+
+	const embed = new MessageEmbed()
+		.setTitle(`${req.body.issue.key}`)
+		.setColor('#0052cc')
+		.setDescription(req.body.issue.fields.summary ?? 'No description available')
+		.addField('Status', req.body.issue.fields.status.name!)
+		.addField('Assignee', assignee)
+		.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
+		.setFooter({ text: `Due date: ${req.body.issue.fields.duedate || 'unknown'}` })
+		.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
+
+	const channelLink = await StatusLink.findById('internal:artist-channel').lean().exec()
+		.catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while finding channel link (${eventId})`);
+			logger.error(err);
+			encounteredError = true;
+		});
+	if (encounteredError) return;
+
+	if (!channelLink) {
+		logger.warn(`No channel link for ${req.body.issue.fields.status.name} found!`);
+		return;
+	}
+
+	const channel = await client.channels.fetch(channelLink.channel)
+		.catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while finding Discord channel (${eventId})`);
+			logger.error(err);
+			encounteredError = true;
+		}) as unknown as BaseGuildTextChannel | null;
+	if (encounteredError) return;
+
+	if (channel?.type !== 'GUILD_TEXT') {
+		logger.error(`Channel: ${channelLink.channel} is not a guild text channel`);
+		return;
+	}
+
+	if (req.body.webhookEvent && req.body.webhookEvent === 'jira:issue_created') {
+		logger.verbose('New Jira issue webhook triggered (artist)');
+
+		const link = new IdLink({
+			jiraKey: req.body.issue.key,
+			type: 'artist',
+			status: req.body.issue.fields.status.name,
+			lastUpdate: new Date(),
+			lastStatusChange: new Date(),
+		});
+
+		const msg = await channel.send({
+			embeds: [embed],
+			components: [row],
+		}).catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while sending message (${eventId})`);
+			logger.error(err);
+			encounteredError = true;
+		});
+		if (encounteredError) return;
+
+		link.discordMessageId = msg!.id;
+		link.save((err) => {
+			if (err) {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while saving issue link (${eventId})`);
+				logger.error(err);
+			}
+		});
+	} else {
+		// Get the project from the db
+		let link = await IdLink.findOne({ jiraKey: req.body.issue.key })
+			.exec()
+			.catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while finding issue link (${eventId})`);
+				logger.error(err);
+				encounteredError = true;
+				/*
+				  Yes, this can be void, but we fix that with the below if statement.
+				  This type conversion is only here to prevent TS errors for
+				  this possibly being undefined, while it isn't
+				*/
+			}) as Document<any, any, Project> & Project;
+		if (encounteredError) return;
+
+		if (!link) {
+			link = new IdLink({
+				jiraKey: req.body.issue.key,
+				type: 'artist',
+				status: req.body.issue.fields.status.name,
+				lastUpdate: new Date(),
+				lastStatusChange: new Date(),
+			});
+		}
+
+		if (link.finished || link.abandoned) return;
+
+		const transitionName = req.body.transition?.transitionName;
+
+		let msg: Message | void;
+		if (link.discordMessageId) {
+			msg = await channel.messages.fetch(link.discordMessageId)
+				.catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching Discord channel (${eventId})`);
+					logger.error(err);
+				});
+		}
+
+		if (transitionName === 'Abandon project' || transitionName === 'Approve') {
+			if (msg) {
+				await msg.delete();
+			}
+
+			if (link.hasAssignment > 0) {
+				const previousAssignedUsers = await UserInfo.find({
+					isAssigned: true,
+					assignedTo: req.body.issue.key,
+				}).exec().catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching users from db (${eventId})`);
+				});
+
+				previousAssignedUsers?.forEach((previousAssignedUser) => {
+					/* eslint-disable no-param-reassign */
+					previousAssignedUser.isAssigned = false;
+					previousAssignedUser.assignedAs = undefined;
+					previousAssignedUser.assignedTo = undefined;
+					previousAssignedUser.lastAssigned = new Date();
+					previousAssignedUser.save((err) => {
+						if (err) {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error saving user in db (${eventId})`);
+							logger.error(err);
+						}
+					});
+					/* eslint-enable */
+				});
+			}
+			if (transitionName === 'Approve') {
+				link.finished = true;
+			} else if (transitionName === 'Abandon project') {
+				link.abandoned = true;
+			}
+			link.save((err) => {
+				if (err) {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while saving issue link (${eventId})`);
+					logger.error(err);
+				}
+			});
+		} else if (transitionName === 'Assign') {
+			const previousAssignedUser = await UserInfo.findOne({
+				isAssigned: true,
+				assignedTo: req.body.issue.key,
+			}).exec().catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching user from db (${eventId})`);
+			});
+
+			if (previousAssignedUser && previousAssignedUser._id !== user?._id) {
+				previousAssignedUser.isAssigned = false;
+				previousAssignedUser.assignedAs = undefined;
+				previousAssignedUser.assignedTo = undefined;
+				previousAssignedUser.lastAssigned = new Date();
+				previousAssignedUser.save((err) => {
+					if (err) {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error saving user in db (${eventId})`);
+						logger.error(err);
+					}
+				});
+
+				if (link.inProgress === 1) {
+					link.inProgress = 0;
+				}
+			}
+			if (!req.body.fields.assignee) {
+				link.hasAssignment = 0;
+			}
+			if (req.body.fields.assignee && link.hasAssignment !== 1) {
+				link.hasAssignment = 1;
+			}
+
+			link.lastUpdate = new Date();
+
+			link.save((err) => {
+				if (err) {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error saving issue link (${eventId})`);
+					logger.error(err);
+				}
+			});
+
+			if (user && previousAssignedUser?._id !== user._id) {
+				let userDoc = await UserInfo.findById(user._id).exec()
+					.catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error finding user in db (${eventId})`);
+						logger.error(err);
+						encounteredError = true;
+					});
+				if (encounteredError) return;
+
+				if (!userDoc) {
+					userDoc = new UserInfo({
+						_id: user._id,
+					});
+				}
+				userDoc.isAssigned = true;
+				userDoc.lastAssigned = new Date();
+				userDoc.assignedTo = req.body.issue.key;
+				userDoc.updateRequested = new Date();
+				userDoc.updateRequestCount = 0;
+
+				userDoc.save((err) => {
+					if (err) {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error saving user in db (${eventId})`);
+						logger.error(err);
+					}
+				});
+
+				client.users.fetch(user._id)
+					.then((fetchedUser) => {
+						sendUserAssignedEmbed(link, fetchedUser, 'artist');
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching Discord user (${eventId})`);
+						logger.error(err);
+					});
+			}
+
+			if (msg) {
+				msg.edit({
+					embeds: [embed],
+					components: [row],
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while editing message in Discord user (${eventId})`);
+					logger.error(err);
+				});
+			} else {
+				logger.verbose(`No message found for ${req.body.issue.key}, creating one`);
+
+				const newMsg = await channel.send({
+					embeds: [embed],
+					components: [row],
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while sending message (${eventId})`);
+					logger.error(err);
+				});
+
+				link.discordMessageId = newMsg?.id;
+				link.save((err) => {
+					if (err) {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while saving issue link (${eventId})`);
+						logger.error(err);
+					}
+				});
+			}
+		} else {
+			// Do this whenever the issue is updated and isn't one of the above transitions
+			// eslint-disable-next-line no-lonely-if
+			if (msg) {
+				await msg.edit({
+					embeds: [embed],
+					components: [row],
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while editing message in Discord user (${eventId})`);
+					logger.error(err);
+				});
+			} else {
+				logger.verbose(`No message found for ${req.body.issue.key}, creating one`);
+
+				const newMsg = await channel.send({
+					embeds: [embed],
+					components: [row],
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while sending message (${eventId})`);
+					logger.error(err);
+				});
+
+				link.discordMessageId = newMsg?.id;
+				link.save((err) => {
+					if (err) {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while saving issue link (${eventId})`);
+						logger.error(err);
+					}
+				});
+			}
+		}
+	}
 });
 
 // Route so that Jira can test if everything is online

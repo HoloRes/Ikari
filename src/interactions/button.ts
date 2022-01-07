@@ -21,7 +21,6 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		return;
 	}
 
-	// TODO: Add interaction handlers for artist
 	if (interaction.customId.startsWith('assignToMe:')) {
 		if (!interaction.guild) return;
 		await interaction.deferReply({ ephemeral: true });
@@ -372,7 +371,11 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		await interaction.deferReply();
 
 		const jiraKey = interaction.customId.split(':')[1];
-		const maxTimeTaken = await Setting.findById('maxTimeTaken').lean().exec();
+		const maxTimeTaken = await Setting.findById('maxTimeTaken').lean().exec()
+			.catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching setting (${eventId})`);
+			});
 
 		let encounteredError = false;
 
@@ -542,6 +545,10 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 					transition: {
 						id: config.jira.transitions['Assign LQC'],
 					},
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error transitioning issue (${eventId})`);
+					interaction.editReply(format(strings.unknownError, { eventId }));
 				});
 
 				project.staleCount += 1;
@@ -574,6 +581,10 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 						}
 						interaction.editReply(format(strings.projectAbandoned, { jiraKey }));
 					});
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error transitioning issue (${eventId})`);
+					interaction.editReply(format(strings.unknownError, { eventId }));
 				});
 			}
 		} else {
@@ -617,7 +628,12 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 
 		let encounteredError = false;
 
-		const teamLeadRole = await GroupLink.findOne({ jiraName: 'Team Lead' }).lean().exec();
+		const teamLeadRole = await GroupLink.findOne({ jiraName: 'Team Lead' }).lean().exec()
+			.catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching group link (${eventId})`);
+			});
+
 		if (!teamLeadRole) {
 			await interaction.editReply('No team lead role found, please report this.');
 			return;
@@ -642,7 +658,43 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		}
 
 		const command = interaction.customId.substring('teamLead:'.length);
-		if (command.startsWith('abandonProject:')) {
+		if (command.startsWith('artist:')) {
+			const subcommand = command.substring('artist:'.length);
+			if (subcommand.startsWith('abandonProject:')) {
+				const issueKey = subcommand.split(':')[1];
+
+				await jiraClient.issues.doTransition({
+					issueIdOrKey: issueKey,
+					transition: {
+						id: config.jira.artist.transitions['Abandon Project'],
+					},
+				}).then(() => {
+					interaction.editReply('Abandoned project, this is irreversible!');
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error transitioning issue (${eventId})`);
+					interaction.editReply(format(strings.unknownError, { eventId }));
+				});
+			} else if (subcommand.startsWith('unassign:')) {
+				const issueKey = subcommand.split(':')[1];
+
+				await jiraClient.issues.doTransition({
+					issueIdOrKey: issueKey,
+					fields: {
+						assignee: null,
+					},
+					transition: {
+						id: config.jira.artist.transitions.Assign,
+					},
+				}).then(() => {
+					interaction.editReply('Unassigned project');
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error transitioning issue (${eventId})`);
+					interaction.editReply(format(strings.assignmentFail, { eventId }));
+				});
+			}
+		} else if (command.startsWith('abandonProject:')) {
 			const issueKey = command.split(':')[1];
 
 			await jiraClient.issues.doTransition({
@@ -710,6 +762,211 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				const eventId = Sentry.captureException(err);
 				logger.error(`Encountered error transitioning issue (${eventId})`);
 				interaction.editReply(format(strings.assignmentFail, { eventId }));
+			});
+		}
+	} else if (interaction.customId.startsWith('artist:')) {
+		const command = interaction.customId.substring('artist:'.length);
+
+		if (command.startsWith('assignToMe:')) {
+			if (!interaction.guild) return;
+			await interaction.deferReply({ ephemeral: true });
+			const issueKey = command.split(':')[1];
+
+			let encounteredError = false;
+
+			// Get jira info from the OAuth server
+			const res = await axios.get(`${config.oauthServer.url}/api/userByDiscordId`, {
+				params: { id: interaction.user.id },
+				auth: {
+					username: config.oauthServer.clientId,
+					password: config.oauthServer.clientSecret,
+				},
+			}).catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while user from OAuth (${eventId})`);
+				logger.error(err);
+				interaction.editReply(format(strings.assignmentFail, { eventId }));
+				encounteredError = true;
+			}) as AxiosResponse;
+			if (encounteredError) return;
+
+			const user = res.data;
+			if (!user) {
+				await interaction.editReply(format(strings.assignmentFail, { eventId: 'noDataInValidRes' }));
+				return;
+			}
+
+			// Update the project info in the db
+			const link = await IdLink.findOne({ discordMessageId: interaction.message.id }).lean().exec()
+				.catch((err: Error) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching project link (${eventId})`);
+					logger.error(err);
+					interaction.editReply(format(strings.assignmentFail, { eventId }));
+					encounteredError = true;
+				});
+			if (encounteredError) return;
+
+			if (!link) {
+				await interaction.editReply(format(strings.assignmentFail, { eventId: 'somehowNoIdLink' }));
+				return;
+			}
+
+			const member = await interaction.guild.members.fetch(interaction.user.id)
+				.catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching member on Discord (${eventId})`);
+					logger.error(err);
+					interaction.editReply(format(strings.assignmentFail, { eventId }));
+					encounteredError = true;
+				});
+			if (encounteredError) return;
+
+			if (!member) {
+				await interaction.editReply(strings.interactionMemberNotFound);
+				return;
+			}
+
+			const updatedGroups = await new Promise((resolve) => {
+				updateUserGroups(interaction.user.id)
+					.catch(() => resolve(false))
+					.then(() => resolve(true));
+			}) as boolean;
+			if (!updatedGroups) {
+				await interaction.editReply(format(strings.assignmentFail, { eventId: 'updateUserGroupsFail' }));
+				return;
+			}
+
+			const issue = await jiraClient.issues.getIssue({ issueIdOrKey: issueKey })
+				.catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching Jira issue (${eventId})`);
+					logger.error(err);
+					interaction.editReply(format(strings.assignmentFail, { eventId }));
+					encounteredError = true;
+				});
+			if (encounteredError) return;
+
+			if (!issue) {
+				await interaction.editReply(strings.assignmentFail);
+				return;
+			}
+
+			type JiraField = {
+				value: string;
+			};
+
+			// eslint-disable-next-line max-len
+			const languages = issue.fields[config.jira.fields.langs].map((language: JiraField) => language.value);
+			const status = issue.fields.status.name!;
+
+			// Check if the user can be assigned to the project at the current status
+			const valid = await checkValid(member, status, languages)
+				.catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error checking if user is valid (${eventId})`);
+					logger.error(err);
+					interaction.editReply(format(strings.assignmentFail, { eventId }));
+					encounteredError = true;
+				});
+			if (encounteredError) return;
+
+			if (valid) {
+				// Use Jira to assign, so the webhook gets triggered and handles the rest.
+				await jiraClient.issues.doTransition({
+					issueIdOrKey: issueKey,
+					fields: {
+						assignee: {
+							name: user.username,
+						},
+					},
+					transition: {
+						id: config.jira.artist.transitions.Assign,
+					},
+				}).then(() => {
+					interaction.editReply(strings.assignmentSuccess);
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error transitioning issue (${eventId})`);
+					interaction.editReply(format(strings.assignmentFail, { eventId }));
+				});
+			} else {
+				await interaction.editReply(strings.assignmentNotPossible);
+			}
+		} else if (command.startsWith('abandonProject:')) {
+			await interaction.deferReply();
+
+			const jiraKey = command.split(':')[1];
+
+			let encounteredError = false;
+
+			const user = await UserInfo.findById(interaction.user.id).exec()
+				.catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching user from db (${eventId})`);
+					logger.error(err);
+					interaction.editReply(format(strings.unknownError, { eventId }));
+					encounteredError = true;
+				});
+			if (encounteredError) return;
+
+			if (!user) {
+				await interaction.editReply(format(strings.unknownError, { eventId: 'somehowNoUserDoc' }));
+				return;
+			}
+
+			if (user.assignedTo !== jiraKey) {
+				await interaction.editReply(strings.notAssignedAnymore);
+				return;
+			}
+
+			const project = await IdLink.findOne({ jiraKey }).exec()
+				.catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching id link (${eventId})`);
+					logger.error(err);
+					interaction.editReply(format(strings.unknownError, { eventId }));
+					encounteredError = true;
+				});
+			if (encounteredError) return;
+
+			if (!project) {
+				await interaction.editReply(format(strings.unknownError, { eventId: 'somehowNoProjectDoc' }));
+				return;
+			}
+
+			await jiraClient.issues.doTransition({
+				issueIdOrKey: project.jiraKey!,
+				fields: {
+					assignee: null,
+				},
+				transition: {
+					id: config.jira.artist.transitions.Assign,
+				},
+			}).catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error transitioning issue (${eventId})`);
+				interaction.editReply(format(strings.unknownError, { eventId }));
+			});
+
+			project.staleCount += 1;
+			project.save((err) => {
+				if (err) {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while saving id link (${eventId})`);
+					logger.error(err);
+					interaction.editReply(format(strings.unknownError, { eventId }));
+				}
+			});
+
+			await interaction.editReply(format(strings.projectAbandoned, { jiraKey }));
+
+			await jiraClient.issueComments.addComment({
+				issueIdOrKey: project.jiraKey!,
+				body: `Project has been abandoned, stale count is now ${project.staleCount}/3`,
+			}).catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while adding comment on Jira (${eventId})`);
 			});
 		}
 	}
