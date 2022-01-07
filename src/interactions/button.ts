@@ -22,7 +22,6 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 	}
 
 	// TODO: Add interaction handlers for artist
-	// TODO: Add Jira comments
 	if (interaction.customId.startsWith('assignToMe:')) {
 		if (!interaction.guild) return;
 		await interaction.deferReply({ ephemeral: true });
@@ -603,6 +602,14 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			});
 
 			await interaction.editReply(format(strings.projectAbandoned, { jiraKey }));
+
+			await jiraClient.issueComments.addComment({
+				issueIdOrKey: project.jiraKey!,
+				body: `Project has been abandoned, stale count is now ${project.staleCount}/3`,
+			}).catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while adding comment on Jira (${eventId})`);
+			});
 		}
 	} else if (interaction.customId.startsWith('teamLead:')) {
 		if (!interaction.guild) return;

@@ -715,8 +715,7 @@ async function staleAnnounce(project: Document<any, any, Project> & Project) {
 	}
 }
 
-// !TODO: Change to one hour when in prod
-cron.schedule('*/5 * * * *', async () => {
+cron.schedule('0 * * * *', async () => {
 	if (!await allServicesOnline()) {
 		logger.info('Unable to execute timer, a service is offline!');
 		return;
