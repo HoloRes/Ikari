@@ -41,6 +41,11 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 	});
 	if (encounteredError || !available) return;
 
+	if (available.length === 0) {
+		logger.info(`Somehow, there's no one available for: ${project.jiraKey} ${role ? `(${role})` : ''}`);
+		return;
+	}
+
 	const guild = await client.guilds.fetch(config.discord.guild)
 		.catch((err) => {
 			const eventId = Sentry.captureException(err);
@@ -48,13 +53,7 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 			logger.error(err);
 			encounteredError = true;
 		});
-	if (encounteredError) return;
-
-	if (!guild) return;
-	if (available.length === 0) {
-		logger.info(`Somehow, there's no one available for: ${project.jiraKey} ${role ? `(${role})` : ''}`);
-		return;
-	}
+	if (encounteredError || !guild) return;
 
 	let filteredAvailable;
 	try {

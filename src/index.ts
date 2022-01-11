@@ -11,6 +11,8 @@ import winston from 'winston';
 import LokiTransport from 'winston-loki';
 import * as Sentry from '@sentry/node';
 import SlackTransport from 'winston-slack-webhook-transport';
+import { RewriteFrames } from '@sentry/integrations';
+import rootDir from './root';
 
 // Config
 // eslint-disable-next-line import/order
@@ -21,6 +23,11 @@ const config = require('../config.json');
 if (config.senryDsn) {
 	Sentry.init({
 		dsn: config.sentryDsn,
+		integrations: [
+			new RewriteFrames({
+				root: rootDir,
+			}),
+		],
 	});
 }
 
@@ -42,7 +49,7 @@ export const jiraClient = new Version2Client({
 
 // Init
 /* eslint-disable import/first */
-import * as jira from './jira';
+import * as jira from './lib/jira';
 import commandInteractionHandler from './interactions/command';
 import updateRoles from './lib/updateRoles';
 import buttonInteractionHandler from './interactions/button';
@@ -79,7 +86,7 @@ if (config.logTransports?.loki) {
 if (config.logTransports?.discord) {
 	logger.add(new SlackTransport({
 		webhookUrl: config.logTransports.discord.url,
-		level: config.logTransports.discord.level ?? 'error',
+		level: config.logTransports.discord.level ?? 'info',
 	}));
 }
 
@@ -148,38 +155,6 @@ client.on('messageCreate', (message) => {
 			}
 			break;
 		}
-		case 'slashCommandSetup': {
-			// Hardcode to only allow GoldElysium
-			if (message.author.id !== '515984841716793344') return;
-			(async () => {
-				try {
-					await rest.put(
-						Routes.applicationGuildCommands(client.application!.id, message.guild!.id),
-						{
-							body: [
-								{
-									name: 'project',
-									description: 'Show project info',
-									options: [
-										{
-											type: 3,
-											name: 'key',
-											description: 'The project key',
-											default: false,
-											required: true,
-										},
-									],
-								},
-							],
-						},
-					);
-					await message.reply('Done!');
-				} catch (e) {
-					logger.error(e);
-				}
-			})();
-			break;
-		}
 		case 'settingSlashCommandSetup': {
 			// Hardcode to only allow GoldElysium
 			if (message.author.id !== '515984841716793344') return;
@@ -221,19 +196,18 @@ client.on('messageCreate', (message) => {
 			break;
 		}
 		default: {
-			logger.debug(args);
 			break;
 		}
 	}
 });
 
-client.on('interactionCreate', async (interaction) => {
-	if (interaction.isCommand()) await commandInteractionHandler(interaction);
-	if (interaction.isButton()) await buttonInteractionHandler(interaction);
-	if (interaction.isUserContextMenu()) await userContextMenuInteractionHandler(interaction);
+client.on('interactionCreate', (interaction) => {
+	if (interaction.isCommand()) commandInteractionHandler(interaction);
+	if (interaction.isButton()) buttonInteractionHandler(interaction);
+	if (interaction.isUserContextMenu()) userContextMenuInteractionHandler(interaction);
 });
 
-client.on('guildMemberUpdate', async (_, member) => {
+client.on('guildMemberUpdate', (_, member) => {
 	// Call function to update the user's document in the db with all their roles.
 	updateRoles(member);
 });

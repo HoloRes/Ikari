@@ -38,7 +38,6 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		}).catch((err) => {
 			const eventId = Sentry.captureException(err);
 			logger.error(`Encountered error while user from OAuth (${eventId})`);
-			logger.error(err);
 			interaction.editReply(format(strings.assignmentFail, { eventId }));
 			encounteredError = true;
 		}) as AxiosResponse;
@@ -81,28 +80,24 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			return;
 		}
 
-		const updatedGroups = await new Promise((resolve) => {
-			updateUserGroups(interaction.user.id)
-				.catch(() => resolve(false))
-				.then(() => resolve(true));
-		}) as boolean;
-		if (!updatedGroups) {
-			await interaction.editReply(format(strings.assignmentFail, { eventId: 'updateUserGroupsFail' }));
-			return;
-		}
+		updateUserGroups(interaction.user.id)
+			.catch(() => {
+				interaction.editReply(format(strings.assignmentFail, { eventId: 'updateUserGroupsFail' }));
+				encounteredError = true;
+			});
+		if (encounteredError) return;
 
 		const issue = await jiraClient.issues.getIssue({ issueIdOrKey: issueKey })
 			.catch((err) => {
 				const eventId = Sentry.captureException(err);
 				logger.error(`Encountered error while fetching Jira issue (${eventId})`);
-				logger.error(err);
 				interaction.editReply(format(strings.assignmentFail, { eventId }));
 				encounteredError = true;
 			});
 		if (encounteredError) return;
 
 		if (!issue) {
-			await interaction.editReply(strings.assignmentFail);
+			await interaction.editReply(format(strings.assignmentFail, { eventId: 'somehowNoIssue' }));
 			return;
 		}
 
@@ -163,7 +158,6 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		}).catch((err) => {
 			const eventId = Sentry.captureException(err);
 			logger.error(`Encountered error while user from OAuth (${eventId})`);
-			logger.error(err);
 			interaction.editReply(format(strings.assignmentFail, { eventId }));
 			encounteredError = true;
 		}) as AxiosResponse;
@@ -205,15 +199,12 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			return;
 		}
 
-		const updatedGroups = await new Promise((resolve) => {
-			updateUserGroups(interaction.user.id)
-				.catch(() => resolve(false))
-				.then(() => resolve(true));
-		}) as boolean;
-		if (!updatedGroups) {
-			await interaction.editReply(format(strings.assignmentFail, { eventId: 'updateUserGroupsFail' }));
-			return;
-		}
+		updateUserGroups(interaction.user.id)
+			.catch(() => {
+				interaction.editReply(format(strings.assignmentFail, { eventId: 'updateUserGroupsFail' }));
+				encounteredError = true;
+			});
+		if (encounteredError) return;
 
 		const issue = await jiraClient.issues.getIssue({ issueIdOrKey: issueKey })
 			.catch((err) => {
@@ -226,7 +217,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		if (encounteredError) return;
 
 		if (!issue) {
-			await interaction.editReply(strings.assignmentFail);
+			await interaction.editReply(format(strings.assignmentFail, { eventId: 'somehowNoIssue' }));
 			return;
 		}
 
@@ -284,7 +275,6 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 		}).catch((err) => {
 			const eventId = Sentry.captureException(err);
 			logger.error(`Encountered error while user from OAuth (${eventId})`);
-			logger.error(err);
 			interaction.editReply(format(strings.assignmentFail, { eventId }));
 			encounteredError = true;
 		}) as AxiosResponse;
@@ -292,7 +282,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 
 		const user = res.data;
 		if (!user) {
-			await interaction.editReply(strings.unknownError);
+			await interaction.editReply(format(strings.assignmentFail, { eventId: 'somehowNoUser' }));
 			return;
 		}
 
@@ -326,15 +316,12 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			return;
 		}
 
-		const updatedGroups = await new Promise((resolve) => {
-			updateUserGroups(interaction.user.id)
-				.catch(() => resolve(false))
-				.then(() => resolve(true));
-		}) as boolean;
-		if (!updatedGroups) {
-			await interaction.editReply(format(strings.assignmentFail, { eventId: 'updateUserGroupsFail' }));
-			return;
-		}
+		updateUserGroups(interaction.user.id)
+			.catch(() => {
+				interaction.editReply(format(strings.assignmentFail, { eventId: 'updateUserGroupsFail' }));
+				encounteredError = true;
+			});
+		if (encounteredError) return;
 
 		const valid = await checkValid(member, 'Sub QC/Language QC', [], 'sqc')
 			.catch((err) => {
@@ -784,7 +771,6 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			}).catch((err) => {
 				const eventId = Sentry.captureException(err);
 				logger.error(`Encountered error while user from OAuth (${eventId})`);
-				logger.error(err);
 				interaction.editReply(format(strings.assignmentFail, { eventId }));
 				encounteredError = true;
 			}) as AxiosResponse;
@@ -827,15 +813,12 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				return;
 			}
 
-			const updatedGroups = await new Promise((resolve) => {
-				updateUserGroups(interaction.user.id)
-					.catch(() => resolve(false))
-					.then(() => resolve(true));
-			}) as boolean;
-			if (!updatedGroups) {
-				await interaction.editReply(format(strings.assignmentFail, { eventId: 'updateUserGroupsFail' }));
-				return;
-			}
+			updateUserGroups(interaction.user.id)
+				.catch(() => {
+					interaction.editReply(format(strings.assignmentFail, { eventId: 'updateUserGroupsFail' }));
+					encounteredError = true;
+				});
+			if (encounteredError) return;
 
 			const issue = await jiraClient.issues.getIssue({ issueIdOrKey: issueKey })
 				.catch((err) => {
@@ -848,28 +831,22 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			if (encounteredError) return;
 
 			if (!issue) {
-				await interaction.editReply(strings.assignmentFail);
+				await interaction.editReply(format(strings.assignmentFail, { eventId: 'somehowNoUser' }));
 				return;
 			}
 
-			type JiraField = {
-				value: string;
-			};
-
-			// eslint-disable-next-line max-len
-			const languages = issue.fields[config.jira.fields.langs].map((language: JiraField) => language.value);
-			const status = issue.fields.status.name!;
-
-			// Check if the user can be assigned to the project at the current status
-			const valid = await checkValid(member, status, languages)
-				.catch((err) => {
+			const artistRoleDoc = await GroupLink.findOne({ jiraName: 'Artist' })
+				.exec()
+				.catch((err: Error) => {
 					const eventId = Sentry.captureException(err);
-					logger.error(`Encountered error checking if user is valid (${eventId})`);
+					logger.error(`Encountered error while fetching group link (${eventId})`);
 					logger.error(err);
 					interaction.editReply(format(strings.assignmentFail, { eventId }));
 					encounteredError = true;
 				});
 			if (encounteredError) return;
+
+			const valid = member.roles.cache.has(artistRoleDoc!._id);
 
 			if (valid) {
 				// Use Jira to assign, so the webhook gets triggered and handles the rest.

@@ -1,22 +1,22 @@
 // Imports
 import { Router, Request } from 'express';
 import {
-	BaseGuildTextChannel, Message, MessageActionRow, MessageButton, MessageEmbed, TextChannel,
+	Message, MessageActionRow, MessageButton, MessageEmbed, TextChannel,
 } from 'discord.js';
 import axios from 'axios';
 import Sentry from '@sentry/node';
 import { Version2Models } from 'jira.js';
 import { Document } from 'mongoose';
-import { logger, client, jiraClient } from './index';
-import IdLink, { Project } from './models/IdLink';
-import StatusLink from './models/StatusLink';
-import UserInfo from './models/UserInfo';
-import sendUserAssignedEmbed from './lib/sendUserAssignedEmbed';
-import { allServicesOnline } from './lib/middleware';
+import { logger, client, jiraClient } from '../index';
+import IdLink, { Project } from '../models/IdLink';
+import StatusLink from '../models/StatusLink';
+import UserInfo from '../models/UserInfo';
+import sendUserAssignedEmbed from './sendUserAssignedEmbed';
+import { allServicesOnline } from './middleware';
 
 // Local files
-const config = require('../config.json');
-const strings = require('../strings.json');
+const config = require('../../config.json');
+const strings = require('../../strings.json');
 
 // Init
 // eslint-disable-next-line import/prefer-default-export
@@ -68,7 +68,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				logger.error(`Encountered error while finding Discord channel (${eventId})`);
 				logger.error(err);
 				encounteredError = true;
-			}) as unknown as BaseGuildTextChannel | null;
+			}) as TextChannel;
 		if (encounteredError) return;
 
 		if (channel?.type !== 'GUILD_TEXT') {
@@ -104,7 +104,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			});
 		if (encounteredError) return;
 
-		link.discordMessageId = msg!.id;
+		link.discordMessageId = msg?.id;
 		link.save((err) => {
 			if (err) {
 				const eventId = Sentry.captureException(err);
@@ -123,7 +123,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				logger.error(err);
 				encounteredError = true;
 				/*
-				  Yes, this can be void, but we fix that with the below if statement.
+				  Yes, this can be void, but we solve that with the below if statement.
 				  This type conversion is only here to prevent TS errors for
 				  this possibly being undefined, while it isn't
 				*/
@@ -164,7 +164,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						logger.error(`Encountered error while finding discord channel (${eventId})`);
 						logger.error(err);
 						encounteredError = true;
-					}) as unknown as BaseGuildTextChannel | null;
+					}) as TextChannel;
 				if (encounteredError) return;
 
 				if (channel?.type !== 'GUILD_TEXT') {
@@ -181,7 +181,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					});
 				if (encounteredError) return;
 
-				await msg!.delete()
+				await msg?.delete()
 					.catch((err) => {
 						const eventId = Sentry.captureException(err);
 						logger.error(`Encountered error while deleting message (${eventId})`);
@@ -209,7 +209,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						logger.error(`Encountered error while finding discord channel (${eventId})`);
 						logger.error(err);
 						encounteredError = true;
-					}) as unknown as BaseGuildTextChannel | null;
+					}) as TextChannel;
 				if (encounteredError) return;
 
 				if (channel?.type !== 'GUILD_TEXT') {
@@ -224,8 +224,8 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						logger.error(err);
 						encounteredError = true;
 					});
-				if (!msg) return;
-				await msg.delete()
+
+				await msg?.delete()
 					.catch((err) => {
 						const eventId = Sentry.captureException(err);
 						logger.error(`Encountered error while deleting message (${eventId})`);
@@ -255,7 +255,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					logger.error(`Encountered error while finding discord channel (${eventId})`);
 					logger.error(err);
 					encounteredError = true;
-				}) as unknown as BaseGuildTextChannel | null;
+				}) as TextChannel;
 			if (encounteredError) return;
 
 			if (channel?.type !== 'GUILD_TEXT') {
@@ -281,8 +281,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				});
 			if (encounteredError) return;
 
-			link.discordMessageId = msg!.id;
+			link.discordMessageId = msg?.id;
 			link.status = req.body.issue.fields.status.name;
+
 			link.save((err) => {
 				if (err) {
 					const eventId = Sentry.captureException(err);
@@ -302,6 +303,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						logger.error(err);
 						encounteredError = true;
 					}) as TextChannel;
+				if (encounteredError) return;
 
 				if (channel?.type !== 'GUILD_TEXT') {
 					logger.error(`Channel: ${statusLink.channel} is not a guild text channel`);
@@ -358,9 +360,6 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 									if (linkedIssue.fields.project.key === 'ARTIST') {
 										await jiraClient.issues.doTransition({
 											issueIdOrKey: linkedIssue.key,
-											fields: {
-												[config.jira.fields.LQCAssignee]: null,
-											},
 											transition: {
 												id: config.jira.artist.transitions['Abandon project'],
 											},
@@ -523,7 +522,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						logger.error(`Encountered error while fetching Discord channel (${eventId})`);
 						logger.error(err);
 						encounteredError = true;
-					}) as unknown as BaseGuildTextChannel | null;
+					}) as TextChannel;
 				if (encounteredError) return;
 
 				if (newChannel?.type !== 'GUILD_TEXT') {
@@ -573,7 +572,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					});
 					if (encounteredError) return;
 
-					link.discordMessageId = newMsg!.id;
+					link.discordMessageId = newMsg?.id;
 					link.status = req.body.issue.fields.status.name;
 					link.lastUpdate = new Date();
 					link.lqcProgressStart = undefined;
@@ -607,7 +606,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					});
 					if (encounteredError) return;
 
-					link.discordMessageId = newMsg!.id;
+					link.discordMessageId = newMsg?.id;
 					link.status = req.body.issue.fields.status.name;
 					link.lastUpdate = new Date();
 					link.hasAssignment = 0;
@@ -660,7 +659,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						logger.error(err);
 					});
 
-					link.discordMessageId = newMsg?.id ?? undefined;
+					link.discordMessageId = newMsg?.id;
 					link.status = req.body.issue.fields.status.name!;
 					link.lastUpdate = new Date();
 
@@ -832,6 +831,8 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						}
 					});
 				}
+
+				if (previousAssignedUser?._id !== user._id) link.progressStart = undefined;
 
 				if (link.inProgress & (1 << 0)) {
 					link.inProgress -= (1 << 0);
@@ -1224,7 +1225,6 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						const eventId = Sentry.captureException(err);
 						logger.error(`Encountered error while fetching user on Discord (${eventId})`);
 						logger.error(err);
-						encounteredError = true;
 					});
 			}
 		} else if (transitionName === 'Assign SubQC') {
@@ -1521,7 +1521,6 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						const eventId = Sentry.captureException(err);
 						logger.error(`Encountered error while fetching user on Discord (${eventId})`);
 						logger.error(err);
-						encounteredError = true;
 					});
 			}
 		} else {
@@ -2022,7 +2021,7 @@ router.post('/webhook/artist', async (req, res) => {
 			logger.error(`Encountered error while finding Discord channel (${eventId})`);
 			logger.error(err);
 			encounteredError = true;
-		}) as unknown as BaseGuildTextChannel | null;
+		}) as TextChannel;
 	if (encounteredError) return;
 
 	if (channel?.type !== 'GUILD_TEXT') {
@@ -2052,7 +2051,7 @@ router.post('/webhook/artist', async (req, res) => {
 		});
 		if (encounteredError) return;
 
-		link.discordMessageId = msg!.id;
+		link.discordMessageId = msg?.id;
 		link.save((err) => {
 			if (err) {
 				const eventId = Sentry.captureException(err);
@@ -2069,11 +2068,6 @@ router.post('/webhook/artist', async (req, res) => {
 				logger.error(`Encountered error while finding issue link (${eventId})`);
 				logger.error(err);
 				encounteredError = true;
-				/*
-				  Yes, this can be void, but we fix that with the below if statement.
-				  This type conversion is only here to prevent TS errors for
-				  this possibly being undefined, while it isn't
-				*/
 			}) as Document<any, any, Project> & Project;
 		if (encounteredError) return;
 
@@ -2102,9 +2096,7 @@ router.post('/webhook/artist', async (req, res) => {
 		}
 
 		if (transitionName === 'Abandon project' || transitionName === 'Approve') {
-			if (msg) {
-				await msg.delete();
-			}
+			await msg?.delete();
 
 			if (link.hasAssignment > 0) {
 				const previousAssignedUsers = await UserInfo.find({
@@ -2187,6 +2179,8 @@ router.post('/webhook/artist', async (req, res) => {
 			});
 
 			if (user && previousAssignedUser?._id !== user._id) {
+				link.progressStart = undefined;
+
 				let userDoc = await UserInfo.findById(user._id).exec()
 					.catch((err) => {
 						const eventId = Sentry.captureException(err);
@@ -2247,14 +2241,14 @@ router.post('/webhook/artist', async (req, res) => {
 				});
 
 				link.discordMessageId = newMsg?.id;
-				link.save((err) => {
-					if (err) {
-						const eventId = Sentry.captureException(err);
-						logger.error(`Encountered error while saving issue link (${eventId})`);
-						logger.error(err);
-					}
-				});
 			}
+			link.save((err) => {
+				if (err) {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while saving issue link (${eventId})`);
+					logger.error(err);
+				}
+			});
 		} else {
 			// Do this whenever the issue is updated and isn't one of the above transitions
 			// eslint-disable-next-line no-lonely-if

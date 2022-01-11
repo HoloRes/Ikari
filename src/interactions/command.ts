@@ -66,13 +66,13 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 		let languages = '';
 
 		let user = 'Unassigned';
-		if (issue.fields!.assignee) {
+		if (issue.fields.assignee) {
 			type UserLink = {
 				_id: string;
 			};
 
 			const res = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
-				params: { key: issue.fields!.assignee.key },
+				params: { key: issue.fields.assignee.key },
 				auth: {
 					username: config.oauthServer.clientId,
 					password: config.oauthServer.clientSecret,
@@ -87,13 +87,12 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 			user = `<@${res.data._id}`;
 		}
 
-		// eslint-disable-next-line no-return-assign
-		issue.fields![config.jira.fields.langs].map((language: Version2Models.CustomFieldOption) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
+		issue.fields[config.jira.fields.langs]?.forEach((language: Version2Models.CustomFieldOption) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
 
-		let timestamps = issue.fields![config.jira.fields.timestamps];
-		if (issue.fields![config.jira.fields.timestamps].split(',').length > 3) {
+		let timestamps = issue.fields[config.jira.fields.timestamps] ?? '';
+		if (issue.fields[config.jira.fields.timestamps]?.split(',').length > 3) {
 			timestamps = '';
-			const split = issue.fields![config.jira.fields.timestamps].split(',');
+			const split = issue.fields[config.jira.fields.timestamps].split(',');
 			// eslint-disable-next-line no-plusplus
 			for (let i = 0; i < 3; i++) {
 				if (i !== 0)timestamps += ',';
@@ -103,17 +102,17 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 		}
 
 		let embed: MessageEmbed;
-		if (issue.fields!.status.name! === 'Sub QC/Language QC') {
+		if (issue.fields.status.name! === 'Sub QC/Language QC') {
 			let LQCAssignee = 'Unassigned';
 			let SubQCAssignee = 'Unassigned';
 
-			if (issue.fields![config.jira.fields.LQCAssignee]) {
+			if (issue.fields[config.jira.fields.LQCAssignee]) {
 				type UserLink = {
 					_id: string;
 				};
 
 				const res = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
-					params: { key: issue.fields![config.jira.fields.LQCAssignee].key },
+					params: { key: issue.fields[config.jira.fields.LQCAssignee].key },
 					auth: {
 						username: config.oauthServer.clientId,
 						password: config.oauthServer.clientSecret,
@@ -127,13 +126,13 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 				LQCAssignee = `<@${res.data._id}>`;
 			}
 
-			if (issue.fields![config.jira.fields.SubQCAssignee]) {
+			if (issue.fields[config.jira.fields.SubQCAssignee]) {
 				type UserLink = {
 					_id: string;
 				};
 
 				const res = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
-					params: { key: issue.fields![config.jira.fields.SubQCAssignee].key },
+					params: { key: issue.fields[config.jira.fields.SubQCAssignee].key },
 					auth: {
 						username: config.oauthServer.clientId,
 						password: config.oauthServer.clientSecret,
@@ -150,16 +149,16 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 			embed = new MessageEmbed()
 				.setTitle(issue.key!)
 				.setColor('#0052cc')
-				.setDescription(issue.fields!.summary || 'No description available')
-				.addField('Status', issue.fields!.status.name)
+				.setDescription(issue.fields.summary || 'No description available')
+				.addField('Status', issue.fields.status.name)
 				.addField('LQC Assignee', LQCAssignee, true)
 				.addField('SubQC Assignee', SubQCAssignee, true)
 				.addField(
 					'LQC Status',
 					(
 						// eslint-disable-next-line no-nested-ternary
-						(issue.fields![config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'LQC_done') ? 'Done' : (
-							issue.fields![config.jira.fields.LQCAssignee] === null ? 'To do' : 'In progress'
+						(issue.fields[config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'LQC_done') ? 'Done' : (
+							issue.fields[config.jira.fields.LQCAssignee] === null ? 'To do' : 'In progress'
 						) ?? 'To do'
 					),
 				)
@@ -167,27 +166,27 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 					'SubQC Status',
 					(
 						// eslint-disable-next-line no-nested-ternary
-						(issue.fields![config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done') ? 'Done' : (
-							issue.fields![config.jira.fields.SubQCAssignee] === null ? 'To do' : 'In progress'
+						(issue.fields[config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done') ? 'Done' : (
+							issue.fields[config.jira.fields.SubQCAssignee] === null ? 'To do' : 'In progress'
 						) ?? 'To do'
 					),
 				)
-				.addField('Source', `[link](${issue.fields![config.jira.fields.videoLink]})`)
-				.addField('Timestamp(s)', timestamps)
-				.setFooter({ text: `Due date: ${issue.fields!.duedate || 'unknown'}` })
-				.setURL(`${config.jira.url}/projects/${issue.fields!.project.key}/issues/${issue.key}`);
+				.addField('Source', `[link](${issue.fields[config.jira.fields.videoLink]})`)
+				.setFooter({ text: `Due date: ${issue.fields.duedate || 'unknown'}` })
+				.setURL(`${config.jira.url}/projects/${issue.fields.project.key}/issues/${issue.key}`);
 		} else {
 			embed = new Discord.MessageEmbed()
 				.setTitle(issue.key)
 				.setColor('#0052cc')
-				.setDescription(issue.fields!.summary || 'No description available')
-				.addField('Status', issue.fields!.status.name!)
+				.setDescription(issue.fields.summary || 'No description available')
+				.addField('Status', issue.fields.status.name!)
 				.addField('Assignee', user)
-				.addField('Source', `[link](${issue.fields![config.jira.fields.videoLink]})`)
-				.addField('Timestamp(s)', timestamps)
-				.setFooter({ text: `Due date: ${issue.fields!.duedate || 'unknown'}` })
-				.setURL(`${config.jira.url}/projects/${issue.fields!.project.key}/issues/${issue.key}`);
+				.addField('Source', `[link](${issue.fields[config.jira.fields.videoLink]})`)
+				.setFooter({ text: `Due date: ${issue.fields.duedate || 'unknown'}` })
+				.setURL(`${config.jira.url}/projects/${issue.fields.project.key}/issues/${issue.key}`);
 		}
+
+		if (timestamps) embed.addField('Timestamp(s)', timestamps);
 
 		await interaction.editReply({ embeds: [embed] });
 	} else if (interaction.commandName === 'setting') {

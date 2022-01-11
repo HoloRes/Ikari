@@ -16,6 +16,7 @@ export async function updateUserGroups(discordId: string): Promise<void> {
 	}).catch((err) => {
 		const eventId = Sentry.captureException(err);
 		logger.error(`Encountered error while updating user groups (${eventId})`);
+		throw err;
 	});
 }
 
