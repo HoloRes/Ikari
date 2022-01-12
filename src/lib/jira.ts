@@ -355,7 +355,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					const links = issue.fields.issuelinks;
 					links.forEach((linkedIssueBare) => {
 						if (linkedIssueBare.inwardIssue?.key) {
-							jiraClient.issues.getIssue({ issueIdOrKey: req.body.issue.key, fields: ['issuelinks'] })
+							jiraClient.issues.getIssue({ issueIdOrKey: linkedIssueBare.inwardIssue?.key, fields: ['project'] })
 								.then(async (linkedIssue) => {
 									if (linkedIssue.fields.project.key === 'ARTIST') {
 										await jiraClient.issues.doTransition({
@@ -445,7 +445,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 							.setLabel('Assign to me')
 							.setStyle('SUCCESS')
 							.setEmoji('819518919739965490')
-							.setDisabled(req.body.issue.fields.assignee !== null),
+							.setDisabled(req.body.issue.fields.assignee === null),
 					);
 
 				// Un-assign all users who were assigned in the previous status

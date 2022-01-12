@@ -19,6 +19,10 @@ deployments:
     manifests:
     - k8s/**
 
+commands:
+  - name: install-build-deps
+    command: "DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -yq build-essential python3 git"
+
 # `dev` only applies when you run `devspace dev`
 dev:
   # `dev.ports` specifies all ports that should be forwarded while `devspace dev` is running
