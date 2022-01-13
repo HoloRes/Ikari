@@ -1,5 +1,5 @@
 import { GuildMember } from 'discord.js';
-import Sentry from '@sentry/node';
+import * as Sentry from '@sentry/node';
 import { logger } from '../index';
 import UserInfo from '../models/UserInfo';
 

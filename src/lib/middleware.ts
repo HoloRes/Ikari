@@ -1,5 +1,5 @@
 import axios from 'axios';
-import Sentry from '@sentry/node';
+import * as Sentry from '@sentry/node';
 import {
 	logger, conn1, conn2, jiraClient,
 } from '../index';

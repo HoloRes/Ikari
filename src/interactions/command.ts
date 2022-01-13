@@ -1,7 +1,7 @@
 import axios, { AxiosResponse } from 'axios';
 import Discord, { MessageEmbed } from 'discord.js';
 import { Version2Models } from 'jira.js';
-import Sentry from '@sentry/node';
+import * as Sentry from '@sentry/node';
 import format from 'string-template';
 import { jiraClient, logger } from '../index';
 import Setting from '../models/Setting';
@@ -87,6 +87,7 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 			user = `<@${res.data._id}`;
 		}
 
+		// eslint-disable-next-line no-return-assign
 		issue.fields[config.jira.fields.langs]?.forEach((language: Version2Models.CustomFieldOption) => (languages.length === 0 ? languages += language.value : languages += `, ${language.value}`));
 
 		let timestamps = issue.fields[config.jira.fields.timestamps] ?? '';

@@ -2,7 +2,7 @@ import Discord from 'discord.js';
 import axios, { AxiosResponse } from 'axios';
 import format from 'string-template';
 import humanizeDuration from 'humanize-duration';
-import Sentry from '@sentry/node';
+import * as Sentry from '@sentry/node';
 import { jiraClient, logger } from '../index';
 import IdLink from '../models/IdLink';
 import UserInfo from '../models/UserInfo';

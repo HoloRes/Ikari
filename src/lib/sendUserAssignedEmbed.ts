@@ -1,5 +1,5 @@
 import Discord, { MessageActionRow, MessageButton } from 'discord.js';
-import Sentry from '@sentry/node';
+import * as Sentry from '@sentry/node';
 import { Project } from '../models/IdLink';
 import { jiraClient, logger } from '../index';
 

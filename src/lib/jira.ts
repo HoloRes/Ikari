@@ -4,7 +4,7 @@ import {
 	Message, MessageActionRow, MessageButton, MessageEmbed, TextChannel,
 } from 'discord.js';
 import axios from 'axios';
-import Sentry from '@sentry/node';
+import * as Sentry from '@sentry/node';
 import { Version2Models } from 'jira.js';
 import { Document } from 'mongoose';
 import { logger, client, jiraClient } from '../index';

@@ -1,5 +1,5 @@
 import Discord, { UserContextMenuInteraction } from 'discord.js';
-import Sentry from '@sentry/node';
+import * as Sentry from '@sentry/node';
 import format from 'string-template';
 import { allServicesOnline } from '../lib/middleware';
 import UserInfo from '../models/UserInfo';

@@ -6,7 +6,7 @@ import {
 } from 'discord.js';
 import humanizeDuration from 'humanize-duration';
 import cron from 'node-cron';
-import Sentry from '@sentry/node';
+import * as Sentry from '@sentry/node';
 import IdLink, { Project } from '../models/IdLink';
 import GroupLink from '../models/GroupLink';
 import UserInfo from '../models/UserInfo';
@@ -855,7 +855,7 @@ async function staleAnnounce(project: Document<any, any, Project> & Project) {
 	}
 }
 
-cron.schedule('0 * * * *', async () => {
+cron.schedule('*/5 * * * *', async () => {
 	if (!await allServicesOnline()) {
 		logger.info('Unable to execute timer, a service is offline!');
 		return;
@@ -934,6 +934,8 @@ cron.schedule('0 * * * *', async () => {
 			},
 		],
 		hasAssignment: { $gte: 1 },
+		abandoned: false,
+		finished: false,
 	}).exec().catch((err) => {
 		const eventId = Sentry.captureException(err);
 		logger.error(`Encountered error while fetching docs (requestInProgress) (${eventId})`);
