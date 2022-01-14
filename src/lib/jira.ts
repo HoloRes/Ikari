@@ -1968,7 +1968,7 @@ router.post('/webhook/artist', async (req, res) => {
 				.setLabel('Assign to me')
 				.setStyle('SUCCESS')
 				.setEmoji('819518919739965490')
-				.setDisabled(req.body.issue.fields.assignee !== null),
+				.setDisabled((req.body.webhookEvent && req.body.webhookEvent === 'jira:issue_created') ? false : req.body.issue.fields.assignee !== null),
 		);
 
 	let assignee = 'Unassigned';

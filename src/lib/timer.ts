@@ -19,6 +19,7 @@ const config = require('../../config.json');
 const strings = require('../../strings.json');
 
 async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void> {
+	logger.verbose(`Auto assigning ${project.jiraKey}`);
 	let encounteredError = false;
 
 	const hiatusRole = await GroupLink.findOne({ jiraName: 'Hiatus' }).exec()
@@ -186,6 +187,7 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 }
 
 async function autoAssignArtist(project: Document<any, any, Project> & Project) {
+	logger.verbose(`Auto assigning ${project.jiraKey} (artist)`);
 	let encounteredError = false;
 
 	const hiatusRole = await GroupLink.findOne({ jiraName: 'Hiatus' }).exec()
@@ -883,6 +885,7 @@ cron.schedule('*/5 * * * *', async () => {
 				// Ignore certain statuses and projects that do not have a message in Discord
 				{
 					status: 'Open',
+					type: 'translation',
 				},
 				{
 					status: 'Being clipped',
@@ -1000,6 +1003,7 @@ cron.schedule('*/5 * * * *', async () => {
 				// Ignore certain statuses and projects that do not have a message in Discord
 				{
 					status: 'Open',
+					type: 'translation',
 				},
 				{
 					status: 'Being clipped',
