@@ -65,6 +65,8 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 
 		let languages = '';
 
+		const folderUrl = encodeURI(`${config.webdav.baseUrl}/TL/Projects/${issue.key} - ${issue.fields.summary}`);
+
 		let user = 'Unassigned';
 		if (issue.fields.assignee) {
 			type UserLink = {
@@ -84,7 +86,7 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 			}) as AxiosResponse<UserLink>;
 			if (!res) return;
 
-			user = `<@${res.data._id}`;
+			user = `<@${res.data._id}>`;
 		}
 
 		// eslint-disable-next-line no-return-assign
@@ -105,7 +107,7 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 		let embed: MessageEmbed;
 		if (issue.fields.status.name! === 'Sub QC/Language QC') {
 			let LQCAssignee = 'Unassigned';
-			let SubQCAssignee = 'Unassigned';
+			let SQCAssignee = 'Unassigned';
 
 			if (issue.fields[config.jira.fields.LQCAssignee]) {
 				type UserLink = {
@@ -127,13 +129,13 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 				LQCAssignee = `<@${res.data._id}>`;
 			}
 
-			if (issue.fields[config.jira.fields.SubQCAssignee]) {
+			if (issue.fields[config.jira.fields.SQCAssignee]) {
 				type UserLink = {
 					_id: string;
 				};
 
 				const res = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
-					params: { key: issue.fields[config.jira.fields.SubQCAssignee].key },
+					params: { key: issue.fields[config.jira.fields.SQCAssignee].key },
 					auth: {
 						username: config.oauthServer.clientId,
 						password: config.oauthServer.clientSecret,
@@ -144,7 +146,7 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 					await interaction.editReply(format(strings.unknownError, { eventId }));
 				}) as AxiosResponse<UserLink>;
 				if (!res) return;
-				SubQCAssignee = `<@${res.data._id}>`;
+				SQCAssignee = `<@${res.data._id}>`;
 			}
 
 			embed = new MessageEmbed()
@@ -153,26 +155,27 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 				.setDescription(issue.fields.summary || 'No description available')
 				.addField('Status', issue.fields.status.name)
 				.addField('LQC Assignee', LQCAssignee, true)
-				.addField('SubQC Assignee', SubQCAssignee, true)
+				.addField('SQC Assignee', SQCAssignee, true)
 				.addField(
 					'LQC Status',
 					(
 						// eslint-disable-next-line no-nested-ternary
-						(issue.fields[config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'LQC_done') ? 'Done' : (
+						(issue.fields[config.jira.fields.LQCSQCFinished] as any[] | null)?.find((item) => item.value === 'LQC_done') ? 'Done' : (
 							issue.fields[config.jira.fields.LQCAssignee] === null ? 'To do' : 'In progress'
 						) ?? 'To do'
 					),
 				)
 				.addField(
-					'SubQC Status',
+					'SQC Status',
 					(
 						// eslint-disable-next-line no-nested-ternary
-						(issue.fields[config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done') ? 'Done' : (
-							issue.fields[config.jira.fields.SubQCAssignee] === null ? 'To do' : 'In progress'
+						(issue.fields[config.jira.fields.LQCSQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done') ? 'Done' : (
+							issue.fields[config.jira.fields.SQCAssignee] === null ? 'To do' : 'In progress'
 						) ?? 'To do'
 					),
 				)
 				.addField('Source', `[link](${issue.fields[config.jira.fields.videoLink]})`)
+				.addField('Nextcloud folder', `[link](${folderUrl})`)
 				.setFooter({ text: `Due date: ${issue.fields.duedate || 'unknown'}` })
 				.setURL(`${config.jira.url}/projects/${issue.fields.project.key}/issues/${issue.key}`);
 		} else {
@@ -183,6 +186,7 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 				.addField('Status', issue.fields.status.name!)
 				.addField('Assignee', user)
 				.addField('Source', `[link](${issue.fields[config.jira.fields.videoLink]})`)
+				.addField('Nextcloud folder', `[link](${folderUrl})`)
 				.setFooter({ text: `Due date: ${issue.fields.duedate || 'unknown'}` })
 				.setURL(`${config.jira.url}/projects/${issue.fields.project.key}/issues/${issue.key}`);
 		}

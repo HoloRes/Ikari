@@ -42,6 +42,7 @@ export default async function sendUserAssignedEmbed(project: Project, user: Disc
 		.setDescription('You have been assigned to a new project')
 		.setColor('#0052cc')
 		.addField('Description', issue.fields.description ?? 'No description available')
+		.addField('Status', issue.fields.status.name!)
 		.setFooter({ text: project.jiraKey! })
 		.setURL(`${config.jira.url}/browse/${project.jiraKey}`);
 

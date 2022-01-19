@@ -337,12 +337,12 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			await jiraClient.issues.doTransition({
 				issueIdOrKey: issueKey,
 				fields: {
-					[config.jira.fields.SubQCAssignee]: {
+					[config.jira.fields.SQCAssignee]: {
 						name: user.username,
 					},
 				},
 				transition: {
-					id: config.jira.transitions['Assign SubQC'],
+					id: config.jira.transitions['Assign SQC'],
 				},
 			}).then(() => {
 				interaction.editReply(strings.assignmentSuccess);
@@ -552,10 +552,10 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				await jiraClient.issues.doTransition({
 					issueIdOrKey: project.jiraKey!,
 					fields: {
-						[config.jira.fields.SubQCAssignee]: null,
+						[config.jira.fields.SQCAssignee]: null,
 					},
 					transition: {
-						id: config.jira.transitions['Assign SubQC'],
+						id: config.jira.transitions['Assign SQC'],
 					},
 				}).then(() => {
 					project.staleCount += 1;
@@ -738,10 +738,10 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			await jiraClient.issues.doTransition({
 				issueIdOrKey: issueKey,
 				fields: {
-					[config.jira.fields.SubQCAssignee]: null,
+					[config.jira.fields.SQCAssignee]: null,
 				},
 				transition: {
-					id: config.jira.transitions['Assign SubQC'],
+					id: config.jira.transitions['Assign SQC'],
 				},
 			}).then(async () => {
 				await interaction.editReply(strings.assignmentSuccess);
@@ -864,6 +864,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 					interaction.editReply(strings.assignmentSuccess);
 				}).catch((err) => {
 					const eventId = Sentry.captureException(err);
+					console.error(err);
 					logger.error(`Encountered error transitioning issue (${eventId})`);
 					interaction.editReply(format(strings.assignmentFail, { eventId }));
 				});

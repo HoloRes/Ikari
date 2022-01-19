@@ -2,7 +2,7 @@
   "assignmentFail": "Uh, I couldn't assign that project to you for some reason, try again. ({eventId})",
   "assignmentNotPossible": "You can't be assigned to that project at this stage, go waste your time otherwise for now.",
   "assignmentNotPossibleArtist": "You don't have the artist role so I can't assign that to you.",
-  "assignmentSuccess": "I succesfully assigned this issue to you :)",
+  "assignmentSuccess": "I successfully assigned this issue to you :)",
   "noJiraAccount": "You gotta have an account to use this, stupid. Log in to your Jira account once to link it, please and thank you.",
   "IkariClippingNotAvailable": "I am not yet able to gracefully and automatically download clips, so you'll have to do it yourself bucko.",
   "interactionMemberNotFound": "Uh, apparently no one clicked that button? Try again.",

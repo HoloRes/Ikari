@@ -7,6 +7,8 @@ import axios from 'axios';
 import * as Sentry from '@sentry/node';
 import { Version2Models } from 'jira.js';
 import { Document } from 'mongoose';
+import { createClient as createWebdavClient, FileStat } from 'webdav';
+import format from 'string-template';
 import { logger, client, jiraClient } from '../index';
 import IdLink, { Project } from '../models/IdLink';
 import StatusLink from '../models/StatusLink';
@@ -21,6 +23,16 @@ const strings = require('../../strings.json');
 // Init
 // eslint-disable-next-line import/prefer-default-export
 export const router = Router();
+
+const webdavClient = createWebdavClient(
+	config.webdav.url,
+	{
+		username: config.webdav.username,
+		password: config.webdav.password,
+		maxBodyLength: 100000000,
+		maxContentLength: 100000000,
+	},
+);
 
 type JiraField = {
 	value: string;
@@ -264,7 +276,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			}
 
 			const embed = new MessageEmbed()
-				.setTitle(`${req.body.issue.key}`)
+				.setTitle(`${req.body.issue.key}: ${req.body.issue.fields.summary}`)
 				.setColor('#0052cc')
 				.setDescription(req.body.issue.fields.summary ?? 'No description available')
 				.addField('Status', req.body.issue.fields.status.name)
@@ -389,6 +401,28 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 			return;
 		}
 		if (transitionName === 'Send to Ikari') {
+			logger.verbose(`Creating project folder for ${req.body.issue.key}`);
+			const folderName = `${req.body.issue.key} - ${req.body.issue.fields.summary}`;
+			const folderPath = `/TL/Projects/${folderName}/`;
+
+			try {
+				if (!await webdavClient.exists(folderPath)) {
+					await webdavClient.createDirectory(folderPath);
+					// eslint-disable-next-line max-len
+					const files = await webdavClient.getDirectoryContents('/TL/Project template', { deep: true }) as FileStat[];
+					files.forEach((item) => {
+						if (item.type === 'directory') {
+							webdavClient.createDirectory(item.filename);
+						} else if (item.type === 'file') {
+							webdavClient.copyFile(item.filename, `${folderPath}${format(item.basename, { projectName: req.body.issue.fields.summary })}`);
+						}
+					});
+				}
+			} catch (err) {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while copying files on Nextcloud (${eventId})`);
+			}
+
 			await jiraClient.issues.doTransition({
 				issueIdOrKey: req.body.issue.key!,
 				transition: {
@@ -542,10 +576,10 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						).addComponents(
 							new MessageButton()
 								.setCustomId(`assignSQCToMe:${req.body.issue.key}`)
-								.setLabel('Assign SubQC to me')
+								.setLabel('Assign SQC to me')
 								.setStyle('SUCCESS')
 								.setEmoji('819518919739965490')
-								.setDisabled(req.body.issue.fields[config.jira.fields.SubQCAssignee] !== null),
+								.setDisabled(req.body.issue.fields[config.jira.fields.SQCAssignee] !== null),
 						);
 
 					const embed = new MessageEmbed()
@@ -554,9 +588,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.setDescription(req.body.issue.fields.description ?? 'No description available')
 						.addField('Status', req.body.issue.fields.status.name)
 						.addField('LQC Assignee', 'Unassigned', true)
-						.addField('SubQC Assignee', 'Unassigned', true)
+						.addField('SQC Assignee', 'Unassigned', true)
 						.addField('LQC Status', 'To do')
-						.addField('SubQC Status', 'To do')
+						.addField('SQC Status', 'To do')
 						.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
 						.setFooter({ text: `Due date: ${req.body.issue.fields.duedate || 'unknown'}` })
 						.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
@@ -795,6 +829,14 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						}
 					});
 				}
+
+				await jiraClient.issueComments.addComment({
+					issueIdOrKey: req.body.issue.key,
+					body: 'Project assignee has been removed',
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while adding comment on Jira (${eventId})`);
+				});
 			} else {
 				const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
 					params: { key: req.body.issue.fields.assignee.key },
@@ -932,6 +974,14 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						logger.error(`Encountered error while fetching Discord user (${eventId})`);
 						logger.error(err);
 					});
+
+				await jiraClient.issueComments.addComment({
+					issueIdOrKey: req.body.issue.key,
+					body: `Project assignee now is [~${req.body.issue.fields.assignee.name}]`,
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while adding comment on Jira (${eventId})`);
+				});
 			}
 		} else if (transitionName === 'Assign LQC') {
 			const row = new MessageActionRow()
@@ -945,10 +995,10 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				).addComponents(
 					new MessageButton()
 						.setCustomId(`assignSQCToMe:${req.body.issue.key}`)
-						.setLabel('Assign SubQC to me')
+						.setLabel('Assign SQC to me')
 						.setStyle('SUCCESS')
 						.setEmoji('819518919739965490')
-						.setDisabled(req.body.issue.fields[config.jira.fields.SubQCAssignee] !== null),
+						.setDisabled(req.body.issue.fields[config.jira.fields.SQCAssignee] !== null),
 				);
 			link.lqcProgressStart = undefined;
 
@@ -971,9 +1021,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					logger.verbose(`No message found for ${req.body.issue.key}, creating one`);
 
 					let SubQCAssignee = 'Unassigned';
-					if (req.body.issue.fields[config.jira.fields.SubQCAssignee] !== null) {
+					if (req.body.issue.fields[config.jira.fields.SQCAssignee] !== null) {
 						const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
-							params: { key: req.body.issue.fields[config.jira.fields.SubQCAssignee].key },
+							params: { key: req.body.issue.fields[config.jira.fields.SQCAssignee].key },
 							auth: {
 								username: config.oauthServer.clientId,
 								password: config.oauthServer.clientSecret,
@@ -992,14 +1042,14 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.setDescription(req.body.issue.fields.description ?? 'No description available')
 						.addField('Status', req.body.issue.fields.status.name!)
 						.addField('LQC Assignee', 'Unassigned', true)
-						.addField('SubQC Assignee', SubQCAssignee, true)
+						.addField('SQC Assignee', SubQCAssignee, true)
 						.addField('LQC Status', 'To do')
 						.addField(
-							'SubQC Status',
+							'SQC Status',
 							(
 								// eslint-disable-next-line no-nested-ternary
 								(req.body.issue.fields[config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done') ? 'Done' : (
-									req.body.issue.fields[config.jira.fields.SubQCAssignee] === null ? 'To do' : 'In progress'
+									req.body.issue.fields[config.jira.fields.SQCAssignee] === null ? 'To do' : 'In progress'
 								) ?? 'To do'
 							),
 						)
@@ -1063,6 +1113,14 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						}
 					});
 				}
+
+				await jiraClient.issueComments.addComment({
+					issueIdOrKey: req.body.issue.key,
+					body: 'LQC is now unassigned',
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while adding comment on Jira (${eventId})`);
+				});
 			} else {
 				const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
 					params: { key: req.body.issue.fields[config.jira.fields.LQCAssignee].key },
@@ -1163,9 +1221,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 					logger.verbose(`No message found for ${req.body.issue.key}, creating one`);
 
 					let SubQCAssignee = 'Unassigned';
-					if (req.body.issue.fields[config.jira.fields.SubQCAssignee] !== null) {
+					if (req.body.issue.fields[config.jira.fields.SQCAssignee] !== null) {
 						const oauthSQCUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
-							params: { key: req.body.issue.fields[config.jira.fields.SubQCAssignee].key },
+							params: { key: req.body.issue.fields[config.jira.fields.SQCAssignee].key },
 							auth: {
 								username: config.oauthServer.clientId,
 								password: config.oauthServer.clientSecret,
@@ -1184,14 +1242,14 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.setDescription(req.body.issue.fields.description ?? 'No description available')
 						.addField('Status', req.body.issue.fields.status.name!)
 						.addField('LQC Assignee', `<@${user._id}>`, true)
-						.addField('SubQC Assignee', SubQCAssignee, true)
+						.addField('SQC Assignee', SubQCAssignee, true)
 						.addField('LQC Status', 'To do')
 						.addField(
-							'SubQC Status',
+							'SQC Status',
 							(
 								// eslint-disable-next-line no-nested-ternary
 								(req.body.issue.fields[config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done') ? 'Done' : (
-									req.body.issue.fields[config.jira.fields.SubQCAssignee] === null ? 'To do' : 'In progress'
+									req.body.issue.fields[config.jira.fields.SQCAssignee] === null ? 'To do' : 'In progress'
 								) ?? 'To do'
 							),
 						)
@@ -1226,8 +1284,16 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						logger.error(`Encountered error while fetching user on Discord (${eventId})`);
 						logger.error(err);
 					});
+
+				await jiraClient.issueComments.addComment({
+					issueIdOrKey: req.body.issue.key,
+					body: `LQC assignee now is [~${req.body.issue.fields.assignee.name}]`,
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while adding comment on Jira (${eventId})`);
+				});
 			}
-		} else if (transitionName === 'Assign SubQC') {
+		} else if (transitionName === 'Assign SQC') {
 			const row = new MessageActionRow()
 				.addComponents(
 					new MessageButton()
@@ -1239,18 +1305,18 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 				).addComponents(
 					new MessageButton()
 						.setCustomId(`assignSQCToMe:${req.body.issue.key}`)
-						.setLabel('Assign SubQC to me')
+						.setLabel('Assign SQC to me')
 						.setStyle('SUCCESS')
 						.setEmoji('819518919739965490')
-						.setDisabled(req.body.issue.fields[config.jira.fields.SubQCAssignee] !== null),
+						.setDisabled(req.body.issue.fields[config.jira.fields.SQCAssignee] !== null),
 				);
 
 			link.sqcProgressStart = undefined;
 
-			if (req.body.issue.fields[config.jira.fields.SubQCAssignee] === null) {
+			if (req.body.issue.fields[config.jira.fields.SQCAssignee] === null) {
 				if (msg) {
 					const embed = msg.embeds[0].spliceFields(2, 1, {
-						name: 'SubQC Assignee',
+						name: 'SQC Assignee',
 						value: 'Unassigned',
 						inline: true,
 					} as any);
@@ -1288,7 +1354,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.setDescription(req.body.issue.fields.description ?? 'No description available')
 						.addField('Status', req.body.issue.fields.status.name!)
 						.addField('LQC Assignee', LQCAssignee, true)
-						.addField('SubQC Assignee', 'Unassigned', true)
+						.addField('SQC Assignee', 'Unassigned', true)
 						.addField(
 							'LQC Status',
 							(
@@ -1298,7 +1364,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 								) ?? 'To do'
 							),
 						)
-						.addField('SubQC Status', 'To do')
+						.addField('SQC Status', 'To do')
 						.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
 						.setFooter({ text: `Due date: ${req.body.issue.fields.duedate || 'unknown'}` })
 						.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
@@ -1357,10 +1423,18 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 							logger.error(err);
 						}
 					});
+
+					await jiraClient.issueComments.addComment({
+						issueIdOrKey: req.body.issue.key,
+						body: 'SQC is now unassigned',
+					}).catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while adding comment on Jira (${eventId})`);
+					});
 				}
 			} else {
 				const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
-					params: { key: req.body.issue.fields[config.jira.fields.SubQCAssignee].key },
+					params: { key: req.body.issue.fields[config.jira.fields.SQCAssignee].key },
 					auth: {
 						username: config.oauthServer.clientId,
 						password: config.oauthServer.clientSecret,
@@ -1442,7 +1516,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 
 				if (msg) {
 					const embed = msg.embeds[0].spliceFields(2, 1, {
-						name: 'SubQC Assignee',
+						name: 'SQC Assignee',
 						value: `<@${user._id}>`,
 						inline: true,
 					} as any);
@@ -1480,7 +1554,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.setDescription(req.body.issue.fields.description ?? 'No description available')
 						.addField('Status', req.body.issue.fields.status.name!)
 						.addField('LQC Assignee', LQCAssignee, true)
-						.addField('SubQC Assignee', `<@${user._id}>`, true)
+						.addField('SQC Assignee', `<@${user._id}>`, true)
 						.addField(
 							'LQC Status',
 							(
@@ -1490,7 +1564,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 								) ?? 'To do'
 							),
 						)
-						.addField('SubQC Status', 'To do')
+						.addField('SQC Status', 'To do')
 						.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
 						.setFooter({ text: `Due date: ${req.body.issue.fields.duedate || 'unknown'}` })
 						.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
@@ -1522,6 +1596,14 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						logger.error(`Encountered error while fetching user on Discord (${eventId})`);
 						logger.error(err);
 					});
+
+				await jiraClient.issueComments.addComment({
+					issueIdOrKey: req.body.issue.key,
+					body: `SQC assignee now is [~${req.body.issue.fields.assignee.name}]`,
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while adding comment on Jira (${eventId})`);
+				});
 			}
 		} else {
 			// eslint-disable-next-line max-len
@@ -1557,10 +1639,10 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						).addComponents(
 							new MessageButton()
 								.setCustomId(`assignSQCToMe:${req.body.issue.key}`)
-								.setLabel('Assign SubQC to me')
+								.setLabel('Assign SQC to me')
 								.setStyle('SUCCESS')
 								.setEmoji('819518919739965490')
-								.setDisabled(req.body.issue.fields[config.jira.fields.SubQCAssignee] !== null),
+								.setDisabled(req.body.issue.fields[config.jira.fields.SQCAssignee] !== null),
 						);
 
 					let LQCAssignee = 'Unassigned';
@@ -1584,9 +1666,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 							});
 							if (oauthUserRes?.data) LQCAssignee = `<@${oauthUserRes.data._id}>`;
 						}
-						if (req.body.issue.fields[config.jira.fields.SubQCAssigneeS] !== null) {
+						if (req.body.issue.fields[config.jira.fields.SQCAssigneeS] !== null) {
 							const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
-								params: { key: req.body.issue.fields[config.jira.fields.SubQCAssignee].key },
+								params: { key: req.body.issue.fields[config.jira.fields.SQCAssignee].key },
 								auth: {
 									username: config.oauthServer.clientId,
 									password: config.oauthServer.clientSecret,
@@ -1606,7 +1688,7 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.setDescription(req.body.issue.fields.summary ?? 'No description available')
 						.addField('Status', req.body.issue.fields.status.name)
 						.addField('LQC Assignee', LQCAssignee, true)
-						.addField('SubQC Assignee', SubQCAssignee, true)
+						.addField('SQC Assignee', SubQCAssignee, true)
 						.addField(
 							'LQC Status',
 							(
@@ -1617,11 +1699,11 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 							),
 						)
 						.addField(
-							'SubQC Status',
+							'SQC Status',
 							(
 								// eslint-disable-next-line no-nested-ternary
 								(req.body.issue.fields[config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done') ? 'Done' : (
-									req.body.issue.fields[config.jira.fields.SubQCAssignee] === null ? 'To do' : 'In progress'
+									req.body.issue.fields[config.jira.fields.SQCAssignee] === null ? 'To do' : 'In progress'
 								) ?? 'To do'
 							),
 						)
@@ -1796,10 +1878,10 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						).addComponents(
 							new MessageButton()
 								.setCustomId(`assignSQCToMe:${req.body.issue.key}`)
-								.setLabel('Assign SubQC to me')
+								.setLabel('Assign SQC to me')
 								.setStyle('SUCCESS')
 								.setEmoji('819518919739965490')
-								.setDisabled(req.body.issue.fields[config.jira.fields.SubQCAssignee] !== null),
+								.setDisabled(req.body.issue.fields[config.jira.fields.SQCAssignee] !== null),
 						);
 
 					const embed = new MessageEmbed()
@@ -1808,9 +1890,9 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 						.setDescription(req.body.issue.fields.description ?? 'No description available')
 						.addField('Status', req.body.issue.fields.status.name)
 						.addField('LQC Assignee', 'Unassigned', true)
-						.addField('SubQC Assignee', 'Unassigned', true)
+						.addField('SQC Assignee', 'Unassigned', true)
 						.addField('LQC Status', 'To do')
-						.addField('SubQC Status', 'To do')
+						.addField('SQC Status', 'To do')
 						.addField('Source', `[link](${req.body.issue.fields[config.jira.fields.videoLink]})`)
 						.setFooter({ text: `Due date: ${req.body.issue.fields.duedate || 'unknown'}` })
 						.setURL(`${config.jira.url}/projects/${req.body.issue.fields.project.key}/issues/${req.body.issue.key}`);
@@ -1947,6 +2029,14 @@ router.post('/webhook', async (req: Request<{}, {}, WebhookBody>, res) => {
 							logger.error(err);
 						});
 				}
+
+				await jiraClient.issueComments.addComment({
+					issueIdOrKey: req.body.issue.key,
+					body: `Project has transitioned to ${req.body.issue.fields.status.name}`,
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while adding comment on Jira (${eventId})`);
+				});
 			}
 		}
 	}

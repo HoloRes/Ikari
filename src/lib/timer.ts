@@ -18,6 +18,10 @@ import { allServicesOnline } from './middleware';
 const config = require('../../config.json');
 const strings = require('../../strings.json');
 
+// eslint-disable-next-line max-len
+const asyncFilter = async <T>(arr: T[], predicate: (item: T, index?: number, array?: T[]) => Promise<boolean>): Promise<T[]> => Promise.all(arr.map(predicate))
+	.then((results) => arr.filter((_v, index) => results[index]));
+
 async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void> {
 	logger.verbose(`Auto assigning ${project.jiraKey}`);
 	let encounteredError = false;
@@ -57,8 +61,9 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 	if (encounteredError || !guild) return;
 
 	let filteredAvailable;
+
 	try {
-		filteredAvailable = available.filter(async (user) => {
+		filteredAvailable = await asyncFilter<any>(available, async (user) => {
 			const member = await guild.members.fetch(user._id)
 				.catch((err) => {
 					const eventId = Sentry.captureException(err);
@@ -68,6 +73,16 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 			if (!member) return false;
 			return checkValid(member, project.status, project.languages, role);
 		});
+		/* filteredAvailable = available.filter(async (user) => {
+			const member = await guild.members.fetch(user._id)
+				.catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching user from Discord (${eventId})`);
+					logger.error(err);
+				});
+			if (!member) return false;
+			return checkValid(member, project.status, project.languages, role);
+		}); */
 	} catch (err) {
 		const eventId = Sentry.captureException(err);
 		logger.error(`Encountered error while filtering available users (${eventId})`);
@@ -109,12 +124,12 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 			await jiraClient.issues.doTransition({
 				issueIdOrKey: project.jiraKey!,
 				fields: {
-					[config.jira.fields.SubQCAssignee]: {
+					[config.jira.fields.SQCAssignee]: {
 						name: user.username,
 					},
 				},
 				transition: {
-					id: config.jira.transitions['Assign SubQC'],
+					id: config.jira.transitions['Assign SQC'],
 				},
 			}).then(async () => {
 				await discordUser.send(format(strings.autoAssignedTo, { jiraKey: project.jiraKey }))
@@ -125,14 +140,15 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 					});
 				await jiraClient.issueComments.addComment({
 					issueIdOrKey: project.jiraKey!,
-					body: `Auto assigned SubQC to [~${user.username}].`,
+					body: `Auto assigned SQC to [~${user.username}].`,
 				}).catch((err) => {
 					const eventId = Sentry.captureException(err);
 					logger.error(`Encountered error while adding comment on Jira (${eventId})`);
 				});
 			}).catch((err) => {
 				const eventId = Sentry.captureException(err);
-				logger.error(`Encountered error sending message (${eventId})`);
+				console.error(err);
+				logger.error(`Encountered error transitioning issue (${eventId})`);
 			});
 		} else if (role === 'lqc') {
 			await jiraClient.issues.doTransition({
@@ -156,6 +172,7 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 				});
 			}).catch((err) => {
 				const eventId = Sentry.captureException(err);
+				console.error(err);
 				logger.error(`Encountered error transitioning issue (${eventId})`);
 			});
 		}
@@ -181,6 +198,7 @@ async function autoAssign(project: Project, role?: 'sqc' | 'lqc'): Promise<void>
 			});
 		}).catch((err) => {
 			const eventId = Sentry.captureException(err);
+			console.error(err);
 			logger.error(`Encountered error transitioning issue (${eventId})`);
 		});
 	}
@@ -238,7 +256,7 @@ async function autoAssignArtist(project: Document<any, any, Project> & Project) 
 
 	let filteredAvailable;
 	try {
-		filteredAvailable = available.filter(async (user) => {
+		filteredAvailable = await asyncFilter<any>(available, async (user) => {
 			const member = await guild.members.fetch(user._id)
 				.catch((err) => {
 					const eventId = Sentry.captureException(err);
@@ -248,12 +266,24 @@ async function autoAssignArtist(project: Document<any, any, Project> & Project) 
 			if (!member) return false;
 			return member.roles.cache.has(artistRole._id);
 		});
+
+		/* filteredAvailable = available.filter(async (user) => {
+			const member = await guild.members.fetch(user._id)
+				.catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching user from Discord (${eventId})`);
+					logger.error(err);
+				});
+			if (!member) return false;
+			return member.roles.cache.has(artistRole._id);
+		}); */
 	} catch (err) {
 		const eventId = Sentry.captureException(err);
 		logger.error(`Encountered error while filtering available users (${eventId})`);
 		logger.error(err);
 		return;
 	}
+	console.log(filteredAvailable);
 
 	if (filteredAvailable?.length === 0) {
 		logger.info(`Somehow, there's no one available for: ${project.jiraKey}`);
@@ -304,6 +334,7 @@ async function autoAssignArtist(project: Document<any, any, Project> & Project) 
 		});
 	}).catch((err) => {
 		const eventId = Sentry.captureException(err);
+		console.error(err);
 		logger.error(`Encountered error transitioning issue (${eventId})`);
 	});
 }
@@ -481,10 +512,10 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 						await jiraClient.issues.doTransition({
 							issueIdOrKey: project.jiraKey!,
 							fields: {
-								[config.jira.fields.SubQCAssignee]: null,
+								[config.jira.fields.SQCAssignee]: null,
 							},
 							transition: {
-								id: config.jira.transitions['Assign SubQC'],
+								id: config.jira.transitions['Assign SQC'],
 							},
 						}).catch((err) => {
 							const eventId = Sentry.captureException(err);
@@ -786,7 +817,7 @@ async function staleAnnounce(project: Document<any, any, Project> & Project) {
 		) {
 			await jiraClient.issueComments.addComment({
 				issueIdOrKey: project.jiraKey!,
-				body: `SubQC hasn't finished in ${maxTimeStr}, reporting to team leads.`,
+				body: `SQC hasn't finished in ${maxTimeStr}, reporting to team leads.`,
 			}).catch((err) => {
 				const eventId = Sentry.captureException(err);
 				logger.error(`Encountered error while adding comment on Jira (${eventId})`);
@@ -796,12 +827,12 @@ async function staleAnnounce(project: Document<any, any, Project> & Project) {
 				new MessageButton()
 					.setStyle('PRIMARY')
 					.setCustomId(`teamLead:unassign-sqc:${project.jiraKey}`)
-					.setLabel('Un-assign SubQC'),
+					.setLabel('Un-assign SQC'),
 			);
 		}
 		if (componentRow.components.length > 1) {
 			await channel.send({
-				content: `LQC and/or SubQC hasn't finished ${project.jiraKey} in ${maxTimeStr}, please take action`,
+				content: `LQC and/or SQC hasn't finished ${project.jiraKey} in ${maxTimeStr}, please take action`,
 				components: [componentRow],
 			}).then(async () => {
 				// eslint-disable-next-line no-param-reassign

@@ -20,7 +20,7 @@ const config = require('../config.json');
 
 // Pre-init
 // Sentry
-if (config.senryDsn) {
+if (config.sentryDsn) {
 	Sentry.init({
 		dsn: config.sentryDsn,
 		integrations: [

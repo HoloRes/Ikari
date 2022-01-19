@@ -73,7 +73,7 @@ export default async function checkValid(
 			return roles.includes(true);
 		}
 	}
-	if (status === 'Video Editing') {
+	if (status === 'Video editing') {
 		const doc = await GroupLink.findOne({ jiraName: 'Video Editor' })
 			.exec()
 			.catch((err: Error) => {
