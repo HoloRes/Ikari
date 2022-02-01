@@ -35,14 +35,14 @@ export default async function userContextMenuInteractionHandler(interaction: Use
 			return;
 		}
 
+		let assignedTo = '';
+		for (let i = 0; i < userDoc.assignedTo.length; i++) {
+			assignedTo += `${(i > 0 && i + 1 < userDoc.assignedTo.length) ? ', ' : ''}${(i > 0 && i + 1 === userDoc.assignedTo.length) ? ' and ' : ''}[${userDoc.assignedTo[i]}](${config.jira.url}/browse/${userDoc.assignedTo[i]})${userDoc.assignedAs.has(userDoc.assignedTo[i]) ? ` as ${userDoc.assignedAs.get(userDoc.assignedTo[i]) === 'lqc' ? 'Language QC' : 'Sub QC'}` : ''}`;
+		}
+
 		const embed = new Discord.MessageEmbed()
 			.setTitle(user.tag)
-			.addField(
-				'Currently assigned to',
-				userDoc.assignedTo
-					? `[${userDoc.assignedTo}](${config.jira.url}/browse/${userDoc.assignedTo})${userDoc.assignedAs ? ` as ${userDoc.assignedAs === 'lqc' ? 'Language QC' : 'Sub QC'}` : ''}`
-					: 'Nothing',
-			)
+			.addField('Currently assigned to', assignedTo)
 			.addField('Last assigned', userDoc.lastAssigned ? `<t:${Math.floor(new Date(userDoc.lastAssigned).getTime() / 1000)}:D>` : 'never');
 		const avatar = user.avatarURL();
 		if (avatar) embed.setThumbnail(avatar);

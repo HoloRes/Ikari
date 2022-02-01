@@ -12,7 +12,7 @@ export default async function checkValid(
 		.catch((err: Error) => {
 			throw err;
 		});
-	if (member.roles.cache.has(hiatusRole?._id)) return false;
+	if (hiatusRole && member.roles.cache.has(hiatusRole._id)) return false;
 
 	if (status === 'Translating') {
 		const roles = await Promise.all(languages.map(async (language: string) => {
@@ -21,7 +21,8 @@ export default async function checkValid(
 				.catch((err: Error) => {
 					throw err;
 				});
-			return member.roles.cache.has(doc?._id);
+			if (doc) return member.roles.cache.has(doc._id);
+			return false;
 		}));
 		return roles.includes(true);
 	}
@@ -32,7 +33,8 @@ export default async function checkValid(
 				.catch((err: Error) => {
 					throw err;
 				});
-			return member.roles.cache.has(doc?._id);
+			if (doc) return member.roles.cache.has(doc._id);
+			return false;
 		}));
 		return roles.includes(true);
 	}
@@ -42,7 +44,8 @@ export default async function checkValid(
 			.catch((err: Error) => {
 				throw err;
 			});
-		return member.roles.cache.has(doc?._id);
+		if (doc) return member.roles.cache.has(doc._id);
+		return false;
 	}
 	if (status === 'Subbing') {
 		const doc = await GroupLink.findOne({ jiraName: 'Subtitler' })
@@ -50,7 +53,8 @@ export default async function checkValid(
 			.catch((err: Error) => {
 				throw err;
 			});
-		return member.roles.cache.has(doc?._id);
+		if (doc) return member.roles.cache.has(doc._id);
+		return false;
 	}
 	if (status === 'Sub QC/Language QC') {
 		if (role === 'sqc') {
@@ -59,7 +63,8 @@ export default async function checkValid(
 				.catch((err: Error) => {
 					throw err;
 				});
-			return member.roles.cache.has(doc?._id);
+			if (doc) return member.roles.cache.has(doc._id);
+			return false;
 		}
 		if (role === 'lqc') {
 			const roles = await Promise.all(languages.map(async (language: string) => {
@@ -68,7 +73,8 @@ export default async function checkValid(
 					.catch((err: Error) => {
 						throw err;
 					});
-				return member.roles.cache.has(doc?._id);
+				if (doc) return member.roles.cache.has(doc._id);
+				return false;
 			}));
 			return roles.includes(true);
 		}
@@ -79,7 +85,8 @@ export default async function checkValid(
 			.catch((err: Error) => {
 				throw err;
 			});
-		return member.roles.cache.has(doc?._id);
+		if (doc) return member.roles.cache.has(doc._id);
+		return false;
 	}
 	if (status === 'Release QC') {
 		const doc = await GroupLink.findOne({ jiraName: 'Release QC' })
@@ -87,7 +94,8 @@ export default async function checkValid(
 			.catch((err: Error) => {
 				throw err;
 			});
-		return member.roles.cache.has(doc?._id);
+		if (doc) return member.roles.cache.has(doc._id);
+		return false;
 	}
 	return false;
 }

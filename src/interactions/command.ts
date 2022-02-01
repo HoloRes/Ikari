@@ -1,12 +1,15 @@
 import axios, { AxiosResponse } from 'axios';
-import Discord, { MessageEmbed } from 'discord.js';
+import Discord, { MessageActionRow, MessageButton, MessageEmbed } from 'discord.js';
 import { Version2Models } from 'jira.js';
 import * as Sentry from '@sentry/node';
 import format from 'string-template';
-import { jiraClient, logger } from '../index';
+import parse from 'parse-duration';
+import { client, jiraClient, logger } from '../index';
 import Setting from '../models/Setting';
 import { allServicesOnline } from '../lib/middleware';
 import UserInfo from '../models/UserInfo';
+import IdLink from '../models/IdLink';
+import StatusLink from '../models/StatusLink';
 
 // Config
 const config = require('../../config.json');
@@ -28,15 +31,14 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 			await interaction.editReply(strings.userNotFound);
 			return;
 		}
+		let assignedTo = '';
+		for (let i = 0; i < userDoc.assignedTo.length; i++) {
+			assignedTo += `${(i > 0 && i + 1 < userDoc.assignedTo.length) ? ', ' : ''}${(i > 0 && i + 1 === userDoc.assignedTo.length) ? ' and ' : ''}[${userDoc.assignedTo[i]}](${config.jira.url}/browse/${userDoc.assignedTo[i]})${userDoc.assignedAs.has(userDoc.assignedTo[i]) ? ` as ${userDoc.assignedAs.get(userDoc.assignedTo[i]) === 'lqc' ? 'Language QC' : 'Sub QC'}` : ''}`;
+		}
 
 		const embed = new Discord.MessageEmbed()
 			.setTitle(user.tag)
-			.addField(
-				'Currently assigned to',
-				userDoc.assignedTo
-					? `[${userDoc.assignedTo}](${config.jira.url}/browse/${userDoc.assignedTo})${userDoc.assignedAs ? ` as ${userDoc.assignedAs === 'lqc' ? 'Language QC' : 'Sub QC'}` : ''}`
-					: 'Nothing',
-			)
+			.addField('Currently assigned to', assignedTo)
 			.addField('Last assigned', userDoc.lastAssigned ? `<t:${Math.floor(new Date(userDoc.lastAssigned).getTime() / 1000)}:D>` : 'never');
 		const avatar = user.avatarURL();
 		if (avatar) embed.setThumbnail(avatar);
@@ -250,5 +252,280 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 		} else {
 			await interaction.editReply('Setting not found');
 		}
+	} else if (interaction.commandName === 'muteproject') {
+		await interaction.deferReply();
+
+		const key = interaction.options.getString('key', true);
+		const durationStr = interaction.options.getString('duration', true);
+		const duration = parse(durationStr);
+		const mutedUntil = new Date(Date.now() + duration);
+
+		const project = await IdLink.findOne({ jiraKey: key }).exec();
+		if (!project) {
+			await interaction.editReply('Project not found!');
+			return;
+		}
+
+		if (project.discordMessageId) {
+			const channelLink = await StatusLink.findById(project.status).lean().exec()
+				.catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching statuslink (${eventId})`);
+				});
+			if (channelLink) {
+				const channel = await client.channels.fetch(channelLink.channel)
+					.catch((err) => {
+						const eventId = Sentry.captureException(err);
+						logger.error(`Encountered error while fetching channel on Discord (${eventId})`);
+					});
+				if (channel && channel.type === 'GUILD_TEXT') {
+					const msg = await channel.messages.fetch(project.discordMessageId);
+					await msg.delete()
+						.catch((err) => {
+							const eventId = Sentry.captureException(err);
+							logger.error(`Encountered error while deleting message on Discord (${eventId})`);
+						});
+				}
+			}
+		}
+
+		project.mutedUntil = mutedUntil;
+		project.discordMessageId = undefined;
+
+		project.save(async (err) => {
+			if (err) {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while saving setting (${eventId})`);
+				await interaction.editReply(format(strings.unknownError, { eventId }));
+			} else {
+				await interaction.editReply(`Project ${project.jiraKey} has been muted until: <t:${Math.floor(mutedUntil.getTime() / 1000)}:D>`);
+			}
+		});
+	} else if (interaction.commandName === 'unmuteproject') {
+		let encounteredError = false;
+		await interaction.deferReply();
+
+		const key = interaction.options.getString('key', true);
+
+		const project = await IdLink.findOne({ jiraKey: key }).exec();
+		if (!project) {
+			await interaction.editReply('Project not found!');
+			return;
+		}
+
+		if (!project.mutedUntil) {
+			await interaction.editReply('Project is not muted!');
+			return;
+		}
+
+		const channelLink = await StatusLink.findById(project.status).lean().exec()
+			.catch(async (err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching statuslink (${eventId})`);
+				await interaction.editReply(format(strings.unknownError, { eventId }));
+				encounteredError = true;
+			});
+		if (encounteredError || !channelLink) return;
+
+		const channel = await client.channels.fetch(channelLink.channel)
+			.catch(async (err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching channel on Discord (${eventId})`);
+				await interaction.editReply(format(strings.unknownError, { eventId }));
+				encounteredError = true;
+			});
+		if (encounteredError) return;
+
+		if (channel?.type !== 'GUILD_TEXT') {
+			logger.error(`Channel: ${channelLink.channel} is not a guild text channel`);
+			return;
+		}
+
+		if (project.discordMessageId) {
+			const msg = await channel.messages.fetch(project.discordMessageId)
+				.catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching message (${eventId})`);
+					logger.error('%o', err);
+				});
+			await msg?.delete()
+				.catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while deleting message (${eventId})`);
+					logger.error('%o', err);
+				});
+		}
+
+		const issue = await jiraClient.issues.getIssue({
+			issueIdOrKey: project.jiraKey!,
+		}).catch(async (err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while fetching issue on jira (${eventId})`);
+			await interaction.editReply(format(strings.unknownError, { eventId }));
+			encounteredError = true;
+		});
+		if (encounteredError || !issue) return;
+
+		let user: any | undefined;
+		if (issue.fields.assignee !== null) {
+			const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+				params: { key: issue.fields.assignee.key },
+				auth: {
+					username: config.oauthServer.clientId,
+					password: config.oauthServer.clientSecret,
+				},
+			}).catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+				encounteredError = true;
+			});
+			if (!encounteredError) user = oauthUserRes!.data;
+			encounteredError = false;
+		}
+
+		let row: Discord.MessageActionRow;
+		let embed: MessageEmbed;
+
+		if (project.status === 'Sub QC/Language QC') {
+			row = new MessageActionRow()
+				.addComponents(
+					new MessageButton()
+						.setCustomId(`assignLQCToMe:${issue.key}`)
+						.setLabel('Assign LQC to me')
+						.setStyle('SUCCESS')
+						.setEmoji('819518919739965490')
+						.setDisabled(issue.fields[config.jira.fields.LQCAssignee] !== null),
+				).addComponents(
+					new MessageButton()
+						.setCustomId(`assignSQCToMe:${issue.key}`)
+						.setLabel('Assign SQC to me')
+						.setStyle('SUCCESS')
+						.setEmoji('819518919739965490')
+						.setDisabled(issue.fields[config.jira.fields.SQCAssignee] !== null),
+				);
+
+			let LQCAssignee = 'Unassigned';
+			let SubQCAssignee = 'Unassigned';
+
+			if (issue.fields[config.jira.fields.LQCAssignee] !== null) {
+				const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+					params: { key: issue.fields[config.jira.fields.LQCAssignee].key },
+					auth: {
+						username: config.oauthServer.clientId,
+						password: config.oauthServer.clientSecret,
+					},
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+					LQCAssignee = '(Encountered error)';
+				});
+				if (oauthUserRes?.data) LQCAssignee = `<@${oauthUserRes.data._id}>`;
+			}
+			if (issue.fields[config.jira.fields.SQCAssigneeS] !== null) {
+				const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+					params: { key: issue.fields[config.jira.fields.SQCAssignee].key },
+					auth: {
+						username: config.oauthServer.clientId,
+						password: config.oauthServer.clientSecret,
+					},
+				}).catch((err) => {
+					const eventId = Sentry.captureException(err);
+					logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+					SubQCAssignee = '(Encountered error)';
+				});
+				if (oauthUserRes?.data) SubQCAssignee = `<@${oauthUserRes.data._id}>`;
+			}
+
+			embed = new MessageEmbed()
+				.setTitle(issue.key!)
+				.setColor('#0052cc')
+				.setDescription(issue.fields.summary ?? 'No description available')
+				.addField('Status', issue.fields.status.name!)
+				.addField('LQC Assignee', LQCAssignee, true)
+				.addField('SQC Assignee', SubQCAssignee, true)
+				.addField(
+					'LQC Status',
+					(
+						// eslint-disable-next-line no-nested-ternary
+						(issue.fields[config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'LQC_done') ? 'Done' : (
+							issue.fields[config.jira.fields.LQCAssignee] === null ? 'To do' : 'In progress'
+						) ?? 'To do'
+					),
+				)
+				.addField(
+					'SQC Status',
+					(
+						// eslint-disable-next-line no-nested-ternary
+						(issue.fields[config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done') ? 'Done' : (
+							issue.fields[config.jira.fields.SQCAssignee] === null ? 'To do' : 'In progress'
+						) ?? 'To do'
+					),
+				)
+				.addField('Source', `[link](${issue.fields[config.jira.fields.videoLink]})`)
+				.setFooter({ text: `Due date: ${issue.fields.duedate || 'unknown'}` })
+				.setURL(`${config.jira.url}/projects/${issue.fields.project.key}/issues/${issue.key}`);
+		} else {
+			embed = new MessageEmbed()
+				.setTitle(`${issue.key}: ${issue.fields.summary}`)
+				.setColor('#0052cc')
+				.setDescription(issue.fields.description ?? 'No description available')
+				.addField('Status', issue.fields.status.name!)
+				// eslint-disable-next-line no-nested-ternary
+				.addField('Assignee', (user ? `<@${user._id}>` : (encounteredError ? '(Encountered error)' : 'Unassigned')))
+				.addField('Source', `[link](${issue.fields[config.jira.fields.videoLink]})`)
+				.setFooter({ text: `Due date: ${issue.fields.duedate ?? 'unknown'}` })
+				.setURL(`${config.jira.url}/projects/${issue.fields.project.key}/issues/${issue.key}`);
+
+			row = new MessageActionRow()
+				.addComponents(
+					new MessageButton()
+						.setCustomId(`assignToMe:${issue.key}`)
+						.setLabel('Assign to me')
+						.setStyle('SUCCESS')
+						.setEmoji('819518919739965490')
+						.setDisabled(issue.fields.assignee !== null),
+				);
+		}
+
+		const msg = await channel.send({ embeds: [embed], components: [row] })
+			.catch(async (err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while sending message (${eventId})`);
+				logger.error('%o', err);
+				await interaction.editReply(format(strings.unknownError, { eventId }));
+				encounteredError = true;
+			});
+		if (encounteredError || !msg) return;
+
+		project.discordMessageId = msg.id;
+		project.mutedUntil = undefined;
+
+		// Reset progress
+		if (project.inProgress & (1 << 0)) {
+			project.progressStart = new Date();
+		}
+		if (project.inProgress & (1 << 1)) {
+			project.lqcProgressStart = new Date();
+		}
+		if (project.inProgress & (1 << 2)) {
+			project.sqcProgressStart = new Date();
+		}
+
+		await project.save(async (err) => {
+			if (err) {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while saving issue link (${eventId})`);
+				logger.error(err);
+				await interaction.editReply(format(strings.unknownError, { eventId }));
+
+				await msg?.delete()
+					.catch((msgErr) => {
+						const msgEventId = Sentry.captureException(msgErr);
+						logger.error(`Encountered error while deleting message (${msgEventId})`);
+						logger.error('%o', msgErr);
+					});
+			}
+			await interaction.editReply(`Project ${project.jiraKey} has been unmuted.`);
+		});
 	}
 }

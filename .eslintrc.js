@@ -20,6 +20,9 @@ module.exports = {
 		indent: 'off',
 		'no-bitwise': 'off',
 		'no-tabs': 'off',
+		'no-plusplus': ['error', {
+			allowForLoopAfterthoughts: true,
+		}],
 		'no-underscore-dangle': 'off', // Disabled as mongoose uses _id
 		'@typescript-eslint/indent': ['error', 'tab'],
 		'import/no-cycle': 'off',

@@ -380,7 +380,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			await interaction.editReply(format(strings.unknownError, { eventId: 'somehowNoUserDoc' }));
 			return;
 		}
-		if (user.assignedTo !== jiraKey) {
+		if (user.assignedTo.findIndex((key) => key === jiraKey) === -1) {
 			await interaction.editReply(strings.notAssignedAnymore);
 			return;
 		}
@@ -399,8 +399,8 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			return;
 		}
 
-		if (user.assignedAs) {
-			if (user.assignedAs === 'lqc') {
+		if (user.assignedAs.get(jiraKey)) {
+			if (user.assignedAs.get(jiraKey) === 'lqc') {
 				if (project.inProgress & (1 << 1)) {
 					await interaction.editReply(strings.requestNotActive);
 					return;
@@ -426,7 +426,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 						),
 					}));
 				});
-			} else if (user.assignedAs === 'sqc') {
+			} else if (user.assignedAs.get(jiraKey) === 'sqc') {
 				if (project.inProgress & (1 << 2)) {
 					await interaction.editReply(strings.requestNotActive);
 					return;
@@ -502,7 +502,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			return;
 		}
 
-		if (user.assignedTo !== jiraKey) {
+		if (user.assignedTo.findIndex((key) => key === jiraKey) === -1) {
 			await interaction.editReply(strings.notAssignedAnymore);
 			return;
 		}
@@ -522,8 +522,8 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 			return;
 		}
 
-		if (user.assignedAs) {
-			if (user.assignedAs === 'lqc') {
+		if (user.assignedAs.get(jiraKey)) {
+			if (user.assignedAs.get(jiraKey) === 'lqc') {
 				await jiraClient.issues.doTransition({
 					issueIdOrKey: project.jiraKey!,
 					fields: {
@@ -548,7 +548,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				});
 
 				await interaction.editReply(format(strings.projectAbandoned, { jiraKey }));
-			} else if (user.assignedAs === 'sqc') {
+			} else if (user.assignedAs.get(jiraKey) === 'sqc') {
 				await jiraClient.issues.doTransition({
 					issueIdOrKey: project.jiraKey!,
 					fields: {
@@ -893,7 +893,7 @@ export default async function buttonInteractionHandler(interaction: Discord.Butt
 				return;
 			}
 
-			if (user.assignedTo !== jiraKey) {
+			if (user.assignedTo.findIndex((key) => key === jiraKey) === -1) {
 				await interaction.editReply(strings.notAssignedAnymore);
 				return;
 			}

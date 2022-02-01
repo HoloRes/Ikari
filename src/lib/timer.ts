@@ -1,7 +1,7 @@
 import axios from 'axios';
 import format from 'string-template';
 import { Document } from 'mongoose';
-import {
+import Discord, {
 	MessageActionRow, MessageButton, MessageEmbed, TextChannel,
 } from 'discord.js';
 import humanizeDuration from 'humanize-duration';
@@ -14,6 +14,7 @@ import { client, jiraClient, logger } from '../index';
 import checkValid from './checkValid';
 import Setting from '../models/Setting';
 import { allServicesOnline } from './middleware';
+import StatusLink from '../models/StatusLink';
 
 const config = require('../../config.json');
 const strings = require('../../strings.json');
@@ -368,7 +369,7 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 			});
 			if (encounteredError) return;
 
-			if (user && (user.updateRequested! < compareDate)) {
+			if (user && (user.updateRequested.get(project.jiraKey!)! < compareDate)) {
 				const discordUser = await client.users.fetch(user._id)
 					.catch((err) => {
 						const eventId = Sentry.captureException(err);
@@ -379,7 +380,9 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 				if (encounteredError) return;
 
 				if (discordUser) {
-					if (user.updateRequestCount === 3) {
+					const updateRequestCount = user.updateRequestCount.get(project.jiraKey!) ?? 0;
+
+					if (updateRequestCount === 3) {
 						await jiraClient.issues.doTransition({
 							issueIdOrKey: project.jiraKey!,
 							fields: {
@@ -455,7 +458,7 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 								.setLabel('Abandon project'),
 						);
 
-					if (user.updateRequestCount === 2) embed.setDescription(format(strings.lastUpdateUpdateRequest, { time: `<t:${Math.floor(new Date(Date.now() + (repeatRequestAfter ? parseInt(repeatRequestAfter.value, 10) : 4 * 24 * 60 * 60 * 1000)).getTime() / 1000)}:R>` }));
+					if (updateRequestCount === 2) embed.setDescription(format(strings.lastUpdateUpdateRequest, { time: `<t:${Math.floor(new Date(Date.now() + (repeatRequestAfter ? parseInt(repeatRequestAfter.value, 10) : 4 * 24 * 60 * 60 * 1000)).getTime() / 1000)}:R>` }));
 
 					await discordUser.send({ embeds: [embed], components: [componentRow] })
 						.catch((err) => {
@@ -463,8 +466,9 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 							logger.error(`Encountered error sending message (${eventId})`);
 							logger.error(err);
 						});
-					user.updateRequested = new Date();
-					user.updateRequestCount += 1;
+
+					user.updateRequested.set(project.jiraKey!, new Date());
+					user.updateRequestCount.set(project.jiraKey!, updateRequestCount + 1);
 
 					await user.save((err) => {
 						if (err) {
@@ -497,7 +501,7 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 			});
 			if (encounteredError) return;
 
-			if (user && (user.updateRequested! < compareDate)) {
+			if (user && (user.updateRequested.get(project.jiraKey!)! < compareDate)) {
 				const discordUser = await client.users.fetch(user._id)
 					.catch((err) => {
 						const eventId = Sentry.captureException(err);
@@ -508,7 +512,9 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 				if (encounteredError) return;
 
 				if (discordUser) {
-					if (user.updateRequestCount === 3) {
+					const updateRequestCount = user.updateRequestCount.get(project.jiraKey!) ?? 0;
+
+					if (updateRequestCount === 3) {
 						await jiraClient.issues.doTransition({
 							issueIdOrKey: project.jiraKey!,
 							fields: {
@@ -583,11 +589,12 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 								.setLabel('Abandon project'),
 						);
 
-					if (user.updateRequestCount === 2) embed.setDescription(format(strings.lastUpdateUpdateRequest, { time: `<t:${Math.floor(new Date(Date.now() + (repeatRequestAfter ? parseInt(repeatRequestAfter.value, 10) : 4 * 24 * 60 * 60 * 1000)).getTime() / 1000)}:R>` }));
+					if (updateRequestCount === 2) embed.setDescription(format(strings.lastUpdateUpdateRequest, { time: `<t:${Math.floor(new Date(Date.now() + (repeatRequestAfter ? parseInt(repeatRequestAfter.value, 10) : 4 * 24 * 60 * 60 * 1000)).getTime() / 1000)}:R>` }));
 
 					await discordUser.send({ embeds: [embed], components: [componentRow] });
-					user.updateRequested = new Date();
-					user.updateRequestCount += 1;
+					user.updateRequested.set(project.jiraKey!, new Date());
+					user.updateRequestCount.set(project.jiraKey!, updateRequestCount + 1);
+
 					await user.save((err) => {
 						if (err) {
 							const eventId = Sentry.captureException(err);
@@ -595,6 +602,7 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 							logger.error(err);
 						}
 					});
+
 					await jiraClient.issueComments.addComment({
 						issueIdOrKey: project.jiraKey!,
 						body: 'Project has not been marked in progress yet, asking again.',
@@ -617,7 +625,7 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 		});
 		if (encounteredError) return;
 
-		if (user && (user.updateRequested! < compareDate)) {
+		if (user && (user.updateRequested.get(project.jiraKey!)! < compareDate)) {
 			const discordUser = await client.users.fetch(user._id)
 				.catch((err) => {
 					const eventId = Sentry.captureException(err);
@@ -628,7 +636,9 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 			if (encounteredError) return;
 
 			if (discordUser) {
-				if (user.updateRequestCount === 3) {
+				const updateRequestCount = user.updateRequestCount.get(project.jiraKey!) ?? 0;
+
+				if (updateRequestCount === 3) {
 					await jiraClient.issues.doTransition({
 						issueIdOrKey: project.jiraKey!,
 						fields: {
@@ -703,7 +713,7 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 							.setLabel('Abandon project'),
 					);
 
-				if (user.updateRequestCount === 2) embed.setDescription(format(strings.lastUpdateUpdateRequest, { time: `<t:${Math.floor(new Date(Date.now() + (repeatRequestAfter ? parseInt(repeatRequestAfter.value, 10) : 4 * 24 * 60 * 60 * 1000)).getTime() / 1000)}:R>` }));
+				if (updateRequestCount === 2) embed.setDescription(format(strings.lastUpdateUpdateRequest, { time: `<t:${Math.floor(new Date(Date.now() + (repeatRequestAfter ? parseInt(repeatRequestAfter.value, 10) : 4 * 24 * 60 * 60 * 1000)).getTime() / 1000)}:R>` }));
 
 				await discordUser.send({ embeds: [embed], components: [componentRow] })
 					.catch((err) => {
@@ -712,8 +722,8 @@ async function projectRequestInProgressMark(project: Document<any, any, Project>
 						logger.error(err);
 					});
 
-				user.updateRequested = new Date();
-				user.updateRequestCount += 1;
+				user.updateRequested.set(project.jiraKey!, new Date());
+				user.updateRequestCount.set(project.jiraKey!, updateRequestCount + 1);
 
 				await user.save((err) => {
 					if (err) {
@@ -850,7 +860,7 @@ async function staleAnnounce(project: Document<any, any, Project> & Project) {
 				logger.error(err);
 			});
 		}
-	} else {
+	} else if (!project.requestedTeamLeadAction) {
 		const componentRow = new MessageActionRow()
 			.addComponents(
 				new MessageButton()
@@ -886,6 +896,211 @@ async function staleAnnounce(project: Document<any, any, Project> & Project) {
 			});
 		});
 	}
+}
+
+async function unmuteProject(project: Document<any, any, Project> & Project): Promise<void> {
+	let encounteredError = false;
+
+	const channelLink = await StatusLink.findById(project.status).lean().exec()
+		.catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while fetching statuslink (${eventId})`);
+			encounteredError = true;
+		});
+	if (encounteredError || !channelLink) return;
+
+	const channel = await client.channels.fetch(channelLink.channel)
+		.catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while fetching channel on Discord (${eventId})`);
+			encounteredError = true;
+		});
+	if (encounteredError) return;
+
+	if (channel?.type !== 'GUILD_TEXT') {
+		logger.error(`Channel: ${channelLink.channel} is not a guild text channel`);
+		return;
+	}
+
+	if (project.discordMessageId) {
+		const msg = await channel.messages.fetch(project.discordMessageId)
+			.catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching message (${eventId})`);
+				logger.error('%o', err);
+			});
+		await msg?.delete()
+			.catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while deleting message (${eventId})`);
+				logger.error('%o', err);
+			});
+	}
+
+	const issue = await jiraClient.issues.getIssue({
+		issueIdOrKey: project.jiraKey!,
+	});
+
+	let user: any | undefined;
+	if (issue.fields.assignee !== null) {
+		const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+			params: { key: issue.fields.assignee.key },
+			auth: {
+				username: config.oauthServer.clientId,
+				password: config.oauthServer.clientSecret,
+			},
+		}).catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+			encounteredError = true;
+		});
+		if (!encounteredError) user = oauthUserRes!.data;
+		encounteredError = false;
+	}
+
+	let row: Discord.MessageActionRow;
+	let embed: MessageEmbed;
+
+	if (project.status === 'Sub QC/Language QC') {
+		row = new MessageActionRow()
+			.addComponents(
+				new MessageButton()
+					.setCustomId(`assignLQCToMe:${issue.key}`)
+					.setLabel('Assign LQC to me')
+					.setStyle('SUCCESS')
+					.setEmoji('819518919739965490')
+					.setDisabled(issue.fields[config.jira.fields.LQCAssignee] !== null),
+			).addComponents(
+				new MessageButton()
+					.setCustomId(`assignSQCToMe:${issue.key}`)
+					.setLabel('Assign SQC to me')
+					.setStyle('SUCCESS')
+					.setEmoji('819518919739965490')
+					.setDisabled(issue.fields[config.jira.fields.SQCAssignee] !== null),
+			);
+
+		let LQCAssignee = 'Unassigned';
+		let SubQCAssignee = 'Unassigned';
+
+		if (issue.fields[config.jira.fields.LQCAssignee] !== null) {
+			const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+				params: { key: issue.fields[config.jira.fields.LQCAssignee].key },
+				auth: {
+					username: config.oauthServer.clientId,
+					password: config.oauthServer.clientSecret,
+				},
+			}).catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+				LQCAssignee = '(Encountered error)';
+			});
+			if (oauthUserRes?.data) LQCAssignee = `<@${oauthUserRes.data._id}>`;
+		}
+		if (issue.fields[config.jira.fields.SQCAssigneeS] !== null) {
+			const oauthUserRes = await axios.get(`${config.oauthServer.url}/api/userByJiraKey`, {
+				params: { key: issue.fields[config.jira.fields.SQCAssignee].key },
+				auth: {
+					username: config.oauthServer.clientId,
+					password: config.oauthServer.clientSecret,
+				},
+			}).catch((err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching user from OAuth (${eventId})`);
+				SubQCAssignee = '(Encountered error)';
+			});
+			if (oauthUserRes?.data) SubQCAssignee = `<@${oauthUserRes.data._id}>`;
+		}
+
+		embed = new MessageEmbed()
+			.setTitle(issue.key!)
+			.setColor('#0052cc')
+			.setDescription(issue.fields.summary ?? 'No description available')
+			.addField('Status', issue.fields.status.name!)
+			.addField('LQC Assignee', LQCAssignee, true)
+			.addField('SQC Assignee', SubQCAssignee, true)
+			.addField(
+				'LQC Status',
+				(
+					// eslint-disable-next-line no-nested-ternary
+					(issue.fields[config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'LQC_done') ? 'Done' : (
+						issue.fields[config.jira.fields.LQCAssignee] === null ? 'To do' : 'In progress'
+					) ?? 'To do'
+				),
+			)
+			.addField(
+				'SQC Status',
+				(
+					// eslint-disable-next-line no-nested-ternary
+					(issue.fields[config.jira.fields.LQCSubQCFinished] as any[] | null)?.find((item) => item.value === 'Sub_QC_done') ? 'Done' : (
+						issue.fields[config.jira.fields.SQCAssignee] === null ? 'To do' : 'In progress'
+					) ?? 'To do'
+				),
+			)
+			.addField('Source', `[link](${issue.fields[config.jira.fields.videoLink]})`)
+			.setFooter({ text: `Due date: ${issue.fields.duedate || 'unknown'}` })
+			.setURL(`${config.jira.url}/projects/${issue.fields.project.key}/issues/${issue.key}`);
+	} else {
+		embed = new MessageEmbed()
+			.setTitle(`${issue.key}: ${issue.fields.summary}`)
+			.setColor('#0052cc')
+			.setDescription(issue.fields.description ?? 'No description available')
+			.addField('Status', issue.fields.status.name!)
+			// eslint-disable-next-line no-nested-ternary
+			.addField('Assignee', (user ? `<@${user._id}>` : (encounteredError ? '(Encountered error)' : 'Unassigned')))
+			.addField('Source', `[link](${issue.fields[config.jira.fields.videoLink]})`)
+			.setFooter({ text: `Due date: ${issue.fields.duedate ?? 'unknown'}` })
+			.setURL(`${config.jira.url}/projects/${issue.fields.project.key}/issues/${issue.key}`);
+
+		row = new MessageActionRow()
+			.addComponents(
+				new MessageButton()
+					.setCustomId(`assignToMe:${issue.key}`)
+					.setLabel('Assign to me')
+					.setStyle('SUCCESS')
+					.setEmoji('819518919739965490')
+					.setDisabled(issue.fields.assignee !== null),
+			);
+	}
+
+	const msg = await channel.send({ embeds: [embed], components: [row] })
+		.catch((err) => {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while sending message (${eventId})`);
+			logger.error('%o', err);
+			encounteredError = true;
+		});
+	if (encounteredError || !msg) return;
+
+	/* eslint-disable no-param-reassign */
+	project.discordMessageId = msg.id;
+	project.mutedUntil = undefined;
+
+	// Reset progress
+	if (project.inProgress & (1 << 0)) {
+		project.progressStart = new Date();
+	}
+	if (project.inProgress & (1 << 1)) {
+		project.lqcProgressStart = new Date();
+	}
+	if (project.inProgress & (1 << 2)) {
+		project.sqcProgressStart = new Date();
+	}
+	/* eslint-enable */
+
+	await project.save(async (err) => {
+		if (err) {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while saving issue link (${eventId})`);
+			logger.error(err);
+
+			await msg?.delete()
+				.catch((msgErr) => {
+					const msgEventId = Sentry.captureException(msgErr);
+					logger.error(`Encountered error while deleting message (${msgEventId})`);
+					logger.error('%o', msgErr);
+				});
+		}
+	});
 }
 
 cron.schedule('*/5 * * * *', async () => {
@@ -931,6 +1146,7 @@ cron.schedule('*/5 * * * *', async () => {
 		},
 		finished: false,
 		abandoned: false,
+		mutedUntil: undefined,
 		lastUpdate: {
 			$lte: new Date(Date.now() - (
 				autoAssignAfter ? parseInt(autoAssignAfter.value, 10) : (3 * 24 * 3600 * 1000))),
@@ -970,6 +1186,7 @@ cron.schedule('*/5 * * * *', async () => {
 		hasAssignment: { $gte: 1 },
 		abandoned: false,
 		finished: false,
+		mutedUntil: undefined,
 	}).exec().catch((err) => {
 		const eventId = Sentry.captureException(err);
 		logger.error(`Encountered error while fetching docs (requestInProgress) (${eventId})`);
@@ -1029,6 +1246,7 @@ cron.schedule('*/5 * * * *', async () => {
 		],
 		abandoned: false,
 		finished: false,
+		mutedUntil: undefined,
 		$not: {
 			$or: [
 				// Ignore certain statuses and projects that do not have a message in Discord
@@ -1055,5 +1273,29 @@ cron.schedule('*/5 * * * *', async () => {
 
 	toNotifyStale?.forEach((project) => {
 		staleAnnounce(project);
+	});
+});
+
+// Mute timer, should be run every 1-5 minutes.
+cron.schedule('*/5 * * * *', async () => {
+	if (!await allServicesOnline()) {
+		logger.info('Unable to execute timer, a service is offline!');
+		return;
+	}
+
+	const toUnmute = await IdLink.find({
+		abandoned: false,
+		finished: false,
+		mutedUntil: {
+			$lte: new Date(),
+		},
+	}).exec().catch((err) => {
+		const eventId = Sentry.captureException(err);
+		logger.error(`Encountered error while fetching docs (requestInProgress) (${eventId})`);
+		logger.error(err);
+	});
+
+	toUnmute?.forEach((project) => {
+		unmuteProject(project);
 	});
 });
