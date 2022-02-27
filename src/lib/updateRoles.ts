@@ -26,8 +26,10 @@ export default async function updateRoles(member: GuildMember) {
 	}
 	user.roles = member.roles.cache.map((role) => role.id);
 	user.save((err) => {
-		const eventId = Sentry.captureException(err);
-		logger.error(`Encountered error while saving user doc (${eventId})`);
-		logger.error(err);
+		if (err) {
+			const eventId = Sentry.captureException(err);
+			logger.error(`Encountered error while saving user doc (${eventId})`);
+			logger.error(err);
+		}
 	});
 }
