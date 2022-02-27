@@ -10,6 +10,7 @@ import { allServicesOnline } from '../lib/middleware';
 import UserInfo from '../models/UserInfo';
 import IdLink from '../models/IdLink';
 import StatusLink from '../models/StatusLink';
+import GroupLink from '../models/GroupLink';
 
 // Config
 const config = require('../../config.json');
@@ -527,5 +528,53 @@ export default async function commandInteractionHandler(interaction: Discord.Com
 			}
 			await interaction.editReply(`Project ${project.jiraKey} has been unmuted.`);
 		});
+	} else if (interaction.commandName === 'inrole') {
+		let encounteredError = false;
+		if (!interaction.guild || interaction.guildId !== config.discord.guild) {
+			await interaction.editReply('Wrong server, dummy.');
+			return;
+		}
+		await interaction.deferReply();
+
+		const role = interaction.options.getRole('role', true);
+		const includeHiatus = interaction.options.getBoolean('includehiatus');
+		const exclusive = interaction.options.getBoolean('onlyhiatus');
+
+		const hiatusRoleLink = await GroupLink.findOne({ jiraName: 'Hiatus' }).exec()
+			.catch(async (err) => {
+				const eventId = Sentry.captureException(err);
+				logger.error(`Encountered error while fetching hiatus group link (${eventId})`);
+				await interaction.editReply(format(strings.unknownError, { eventId }));
+				encounteredError = true;
+			});
+		if (encounteredError) return;
+		if (!hiatusRoleLink) {
+			await interaction.editReply(format(strings.unknownError, { eventId: 'NO_HIATUS_ROLE_LINK' }));
+			return;
+		}
+
+		await interaction.guild.members.fetch();
+		const members = interaction.guild.members.cache.filter((member) => {
+			if (includeHiatus) {
+				return (
+					member.roles.cache.has(role.id)
+					&& (exclusive ? member.roles.cache.has(hiatusRoleLink._id) : true)
+				);
+			}
+			if (exclusive) {
+				return member.roles.cache.has(role.id) && member.roles.cache.has(hiatusRoleLink._id);
+			}
+			return member.roles.cache.has(role.id) && !member.roles.cache.has(hiatusRoleLink._id);
+		});
+
+		const mentions = members.map((member) => `<@${member.id}>`);
+
+		const embed = new Discord.MessageEmbed()
+			.setTitle(`Members in role **@${role.name}**`)
+			.setDescription(mentions.join('\n'))
+			.setFooter({ text: `${(includeHiatus || exclusive) ? 'Includes' : 'Excludes'} hiatus ${exclusive ? '(exclusive)' : ''}` })
+			.setTimestamp();
+
+		await interaction.editReply({ embeds: [embed] });
 	}
 }

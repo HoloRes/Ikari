@@ -1103,6 +1103,7 @@ async function unmuteProject(project: Document<any, any, Project> & Project): Pr
 	});
 }
 
+// TODO: Set to 1 hour before final release!
 cron.schedule('*/5 * * * *', async () => {
 	if (!await allServicesOnline()) {
 		logger.info('Unable to execute timer, a service is offline!');
