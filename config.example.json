@@ -1,7 +1,8 @@
 {
     "discord": {
         "prefix": "",
-        "authToken": ""
+        "authToken": "",
+        "guild": ""
     },
     "webdav": {
         "url": "",
@@ -25,6 +26,16 @@
         "clientId": "",
         "clientSecret": ""
     },
+    "logTransports": {
+        "console": {
+            "level": "info"
+        },
+        "loki": {
+            "host": "",
+            "level": "info"
+        },
+        "discord": "Slack compatible webhook url, for Discord, just add /slack after the url"
+    },
     "jira": {
         "url": "",
         "username": "",
@@ -34,9 +45,26 @@
             "extraArgs": "",
             "videoLink": "",
             "timestamps": "",
-            "fileExt": ""
+            "fileExt": "",
+            "LQCAssignee": "",
+            "SubQCAssignee": "",
+            "LQCSubQCFinished": ""
+        },
+        "artist": {
+            "transitions" : {
+                "Abandon project": "",
+                "Assign": ""
+            }
+        },
+        "transitions": {
+            "Assign": "",
+            "Assign SubQC": "",
+            "Assign LQC": "",
+            "Send to translator": "",
+            "Abandon project": ""
         }
     },
     "webhookSecret": "",
-    "port": 3001
+    "port": 3001,
+    "sentryDsn": ""
 }

@@ -1,6 +1,20 @@
 {
-  "assignmentFail": "Uh, I couldn't assign that project to you for some reason, try again.",
+  "assignmentFail": "Uh, I couldn't assign that project to you for some reason, try again. ({eventId})",
   "assignmentNotPossible": "You can't be assigned to that project at this stage, go waste your time otherwise for now.",
   "assignmentNotPossibleArtist": "You don't have the artist role so I can't assign that to you.",
-  "noJiraAccount": "You gotta have an account to use this stupid. Log in to your Jira account once to link it, please and thanks."
+  "assignmentSuccess": "I successfully assigned this issue to you :)",
+  "noJiraAccount": "You gotta have an account to use this, stupid. Log in to your Jira account once to link it, please and thank you.",
+  "IkariClippingNotAvailable": "I am not yet able to gracefully and automatically download clips, so you'll have to do it yourself bucko.",
+  "interactionMemberNotFound": "Uh, apparently no one clicked that button? Try again.",
+  "noUpdateInTime": "I have not received an update from you about this in a whiiiile. If you keep this up i'll consider this as serious child abandonment and you'll be auto un-assigned from {jiraKey}",
+  "autoAssignedTo": "I've been trying to reach you about your extended car warranty. Oh! And i auto-assigned you to {jiraKey} because you haven't been graced by my presence in a while.",
+  "unknownError": "Oh nyo! An ewwow occuwwed 3: Please try that again, I've kindly logged the error for you. ({eventId})",
+  "notAssignedAnymore": "It seems you're not assigned to this project anymore, so I can't help you ya weeb.",
+  "requestNotActive": "This request isn't active anymore.",
+  "updateReceivedFromUser": "The project has been marked as in progress (Woohoo! Work!), you have {maxTime} to finish this project (don't even think about procrastinating >:/).",
+  "projectAbandoned": "The project {jiraKey} has been abandoned like an orphan on a doorstep~",
+  "serviceOffline": "One of the required services is offline. Get some water, watch some of that wack asmr shit and try again later.",
+  "userNotFound": "I have no information about this weeb.",
+  "updateRequest": "My pwecious pwoject hasn't been marked as in progress yet :,( Please mark it as in progress once you get off your ass. I'll remind you again in {time}.",
+  "lastUpdateUpdateRequest": "The project still hasn't been marked as in progress yet. Please mark it as in progress when you start working on it. This is your last chance to make your precious anime girl robot happy so either use it or I'll un-assign you from my life's work in {time}"
 }

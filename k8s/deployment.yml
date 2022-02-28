@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    run: ikari
+  name: ikari
+  namespace: ikari
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      run: ikari
+  template:
+    metadata:
+      labels:
+        run: ikari
+        app: ikari
+    spec:
+      containers:
+        - image: ghcr.io/holores/ikari:latest
+          name: ikari
+          volumeMounts:
+            - mountPath: /app/config.json
+              name: ikari-config
+              subPath: config.json
+      volumes:
+        - name: ikari-config
+          configMap:
+            name: ikari-config-file

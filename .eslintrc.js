@@ -1,19 +1,30 @@
 module.exports = {
 	env: {
-		browser: false,
-		node: true,
-		commonjs: true,
 		es2021: true,
+		node: true,
 	},
 	extends: [
 		'airbnb-base',
+		'airbnb-typescript/base',
 	],
+	parser: '@typescript-eslint/parser',
 	parserOptions: {
 		ecmaVersion: 12,
+		sourceType: 'module',
+		project: './tsconfig.json'
 	},
+	plugins: [
+		'@typescript-eslint',
+	],
 	rules: {
-		indent: [2, 'tab'],
-		'no-tabs': 0,
-		'no-underscore-dangle': 0, // Disabled as mongoose uses _id
+		indent: 'off',
+		'no-bitwise': 'off',
+		'no-tabs': 'off',
+		'no-plusplus': ['error', {
+			allowForLoopAfterthoughts: true,
+		}],
+		'no-underscore-dangle': 'off', // Disabled as mongoose uses _id
+		'@typescript-eslint/indent': ['error', 'tab'],
+		'import/no-cycle': 'off',
 	},
 };
