@@ -36,8 +36,12 @@ export default async function userContextMenuInteractionHandler(interaction: Use
 		}
 
 		let assignedTo = '';
-		for (let i = 0; i < userDoc.assignedTo.length; i++) {
-			assignedTo += `${(i > 0 && i + 1 < userDoc.assignedTo.length) ? ', ' : ''}${(i > 0 && i + 1 === userDoc.assignedTo.length) ? ' and ' : ''}[${userDoc.assignedTo[i]}](${config.jira.url}/browse/${userDoc.assignedTo[i]})${userDoc.assignedAs.has(userDoc.assignedTo[i]) ? ` as ${userDoc.assignedAs.get(userDoc.assignedTo[i]) === 'lqc' ? 'Language QC' : 'Sub QC'}` : ''}`;
+		if (userDoc.assignedTo.length === 0) {
+			assignedTo = 'None';
+		} else {
+			for (let i = 0; i < userDoc.assignedTo.length; i++) {
+				assignedTo += `${(i > 0 && i + 1 < userDoc.assignedTo.length) ? ', ' : ''}${(i > 0 && i + 1 === userDoc.assignedTo.length) ? ' and ' : ''}[${userDoc.assignedTo[i]}](${config.jira.url}/browse/${userDoc.assignedTo[i]})${userDoc.assignedAs.has(userDoc.assignedTo[i]) ? ` as ${userDoc.assignedAs.get(userDoc.assignedTo[i]) === 'lqc' ? 'Language QC' : 'Sub QC'}` : ''}`;
+			}
 		}
 
 		const embed = new Discord.MessageEmbed()
