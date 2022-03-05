@@ -23,6 +23,8 @@ const config = require('../config.json');
 if (config.sentryDsn) {
 	Sentry.init({
 		dsn: config.sentryDsn,
+		release: process.env.COMMIT_SHA ? `ikari@${process.env.COMMIT_SHA}` : undefined,
+		environment: process.env.ENVIRONMENT ?? 'development',
 		integrations: [
 			new RewriteFrames({
 				root: rootDir,
