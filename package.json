@@ -19,7 +19,7 @@
   },
   "homepage": "https://github.com/HoloRes/Ikari#readme",
   "dependencies": {
-    "@discordjs/rest": "^0.3.0",
+    "@discordjs/rest": "^0.4.0",
     "@sentry/integrations": "^6.17.4",
     "@sentry/node": "^6.17.4",
     "@sentry/tracing": "^6.16.1",
